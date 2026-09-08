@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -u
+WEB=$(systemctl is-active touchworkstation 2>/dev/null || true)
+NGINX=$(systemctl is-active nginx 2>/dev/null || true)
+printf '%-20s %s\n' 'Web application' "$WEB"
+printf '%-20s %s\n' 'nginx' "$NGINX"
+HOST=$(hostname)
+IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+echo
+echo "Open: http://${HOST}.local:8088"
+[ -n "$IP" ] && echo "Fallback: http://${IP}:8088"

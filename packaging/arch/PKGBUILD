@@ -1,0 +1,79 @@
+# Maintainer: TouchWorkstation Beta <team@touchworkstation.com>
+#
+# Unlike the .deb/.rpm/.pkg.tar.zst, this build sets VITE_THEME=minimal —
+# a distro-specific visual theme (full-bleed wallpaper, plain icon list,
+# no dashboard cards) requested specifically for this Arch/Omarchy build.
+# Every other package's build step never sets this variable and renders
+# the standard TouchWorkstation UI untouched — see ui/src/MinimalDashboard.jsx.
+#
+# Unlike the .deb/.rpm, this does NOT bundle its own Node.js runtime or
+# defer `npm install`/`npm run build` to a post-install script — that's
+# the right call for those formats (predictable Node version, no build
+# tools required at install time on a system that may not have them),
+# but it's not idiomatic here. Arch packages build during `makepkg`, and
+# depending on the system's own nodejs/npm (kept current by pacman) is
+# the expected pattern, not bundling a private copy.
+#
+# This tracks the repo's default branch directly (a "-git" package) since
+# the project doesn't cut version tags yet. Once it does, switch to a
+# tagged release: replace the source=() git URL's branch ref with a tag,
+# and pkgver() with a plain `pkgver=X.Y.Z`.
+
+pkgname=touchworkstation-git
+pkgver=1.0.0.r0.g0000000
+pkgrel=1
+pkgdesc="Mobile workstation and developer control center"
+arch=('x86_64')
+url="https://touchworkstation.com"
+license=('custom:proprietary')
+depends=('nodejs' 'npm' 'nginx' 'git' 'tmux' 'github-cli' 'openssl' 'procps-ng' 'iproute2' 'psmisc')
+makedepends=('git' 'base-devel' 'python')
+provides=('touchworkstation')
+conflicts=('touchworkstation')
+backup=('etc/touchworkstation/touchworkstation.env' 'etc/nginx/conf.d/touchworkstation.conf')
+install=touchworkstation.install
+source=("$pkgname::git+https://github.com/TouchWorkStation/TouchWorkstation.git"
+        "touchworkstation.service"
+        "touchworkstation-nginx.conf"
+        "touchworkstation-status"
+        "touchworkstation-credentials"
+        "touchworkstation-password"
+        "touchworkstation-restart")
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP')
+
+pkgver() {
+  cd "$pkgname"
+  printf "1.0.0.r%s.g%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  cd "$pkgname"
+  npm install --no-audit --no-fund --no-progress
+}
+
+build() {
+  cd "$pkgname"
+  VITE_THEME=minimal npm run build
+}
+
+package() {
+  cd "$pkgname"
+  install -dm755 "$pkgdir/opt/touchworkstation/app"
+  cp -a . "$pkgdir/opt/touchworkstation/app/"
+  rm -rf "$pkgdir/opt/touchworkstation/app/.git"
+
+  install -Dm644 "$srcdir/touchworkstation.service" \
+    "$pkgdir/usr/lib/systemd/system/touchworkstation.service"
+  install -Dm644 "$srcdir/touchworkstation-nginx.conf" \
+    "$pkgdir/etc/nginx/conf.d/touchworkstation.conf"
+
+  for bin in touchworkstation-status touchworkstation-credentials touchworkstation-password touchworkstation-restart; do
+    install -Dm755 "$srcdir/$bin" "$pkgdir/usr/bin/$bin"
+  done
+}

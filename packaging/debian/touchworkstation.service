@@ -1,0 +1,16 @@
+[Unit]
+Description=TouchWorkstation local agent
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/touchworkstation/touchworkstation.env
+WorkingDirectory=/opt/touchworkstation/app
+ExecStart=/opt/touchworkstation/runtime/bin/node server/index.js
+Restart=on-failure
+RestartSec=3
+User=TW_USER_PLACEHOLDER
+Group=TW_GROUP_PLACEHOLDER
+
+[Install]
+WantedBy=multi-user.target

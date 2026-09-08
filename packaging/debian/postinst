@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+set -euo pipefail
+APP=/opt/touchworkstation/app
+RUNTIME=/opt/touchworkstation/runtime/bin
+ENV_DIR=/etc/touchworkstation
+ENV_FILE=$ENV_DIR/touchworkstation.env
+STATE=/var/lib/touchworkstation
+
+# gh (GitHub CLI) isn't in default Ubuntu/Debian repos, so it can never be
+# satisfied by a plain Depends: line — apt has no way to add a third-party
+# repo just because a package is named somewhere. Install it properly here
+# instead, the same way the multi-distro installer does.
+if ! command -v gh >/dev/null 2>&1; then
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
+  chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    > /etc/apt/sources.list.d/github-cli.list
+  apt-get update -qq && apt-get install -y gh || echo 'WARNING: gh (GitHub CLI) could not be installed automatically — GitHub features will need it installed manually.' >&2
+fi
+
+if [ -f "$ENV_FILE" ]; then
+  OLD_USER=$(grep '^TW_USER=' "$ENV_FILE" | cut -d= -f2- || true)
+else OLD_USER=""; fi
+APP_USER="${OLD_USER:-$(getent passwd | awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {print $1; exit}')}"
+[ -n "$APP_USER" ] || { echo 'Could not determine the workstation user.' >&2; exit 1; }
+APP_GROUP=$(id -gn "$APP_USER")
+APP_HOME=$(getent passwd "$APP_USER" | cut -d: -f6)
+mkdir -p "$ENV_DIR" "$STATE" "$APP_HOME/TouchWorkstation/Projects"
+
+FRESH_INSTALL=1
+[ -f "$ENV_FILE" ] && FRESH_INSTALL=0
+OLD_PASSWORD=""; OLD_SECRET=""; OLD_MUST_CHANGE=""
+for f in "$ENV_FILE" /etc/touchworkstation.env /opt/touchworkstation/.env "$APP_HOME/.config/touchworkstation/.env"; do
+  [ -f "$f" ] || continue
+  p=$(grep '^APP_PASSWORD=' "$f" | head -1 | cut -d= -f2- || true); [ -n "$p" ] && OLD_PASSWORD="$p"
+  s=$(grep '^JWT_SECRET=' "$f" | head -1 | cut -d= -f2- || true); [ -n "$s" ] && OLD_SECRET="$s"
+  m=$(grep '^PW_MUST_CHANGE=' "$f" | head -1 | cut -d= -f2- || true); [ -n "$m" ] && OLD_MUST_CHANGE="$m"
+done
+APP_PASSWORD="${OLD_PASSWORD:-touchwork}"
+JWT_SECRET="${OLD_SECRET:-$(openssl rand -hex 48)}"
+if [ "$FRESH_INSTALL" = "1" ] && [ -z "$OLD_PASSWORD" ]; then PW_MUST_CHANGE=1; else PW_MUST_CHANGE="${OLD_MUST_CHANGE:-0}"; fi
+
+cat > "$ENV_FILE" <<ENV
+APP_PASSWORD=$APP_PASSWORD
+JWT_SECRET=$JWT_SECRET
+PW_MUST_CHANGE=$PW_MUST_CHANGE
+PORT=8787
+TW_USER=$APP_USER
+TW_HOME=$APP_HOME
+TW_STATE_DIR=$APP_HOME/.local/share/touchworkstation
+TW_ENV_FILE=$ENV_FILE
+HOME=$APP_HOME
+ENV
+chown root:"$APP_GROUP" "$ENV_FILE"; chmod 660 "$ENV_FILE"
+
+STATE_DIR="$APP_HOME/.local/share/touchworkstation"
+mkdir -p "$STATE_DIR"
+chown -R "$APP_USER:$APP_GROUP" "$APP_HOME/.local" "$STATE_DIR" 2>/dev/null || true
+chown -R "$APP_USER:$APP_GROUP" "$STATE" "$APP_HOME/TouchWorkstation" "$APP"
+
+sed -i "s/^User=TW_USER_PLACEHOLDER/User=$APP_USER/; s/^Group=TW_GROUP_PLACEHOLDER/Group=$APP_GROUP/" \
+  /lib/systemd/system/touchworkstation.service
+
+# Older beta builds installed the now-removed VNC desktop services; clean up
+# any leftovers from an in-place upgrade so they don't linger as dead units.
+systemctl stop touchworkstation-novnc touchworkstation-desktop 2>/dev/null || true
+systemctl disable touchworkstation-novnc touchworkstation-desktop 2>/dev/null || true
+rm -f /etc/systemd/system/touchworkstation.service \
+      /etc/systemd/system/touchworkstation-desktop.service \
+      /etc/systemd/system/touchworkstation-novnc.service \
+      /lib/systemd/system/touchworkstation-desktop.service \
+      /lib/systemd/system/touchworkstation-novnc.service
+
+NPM_CACHE="$STATE/npm-cache"
+mkdir -p "$NPM_CACHE"
+chown -R "$APP_USER:$APP_GROUP" "$NPM_CACHE" "$APP"
+if [ ! -d "$APP/node_modules" ] || [ "$APP/package.json" -nt "$APP/node_modules" ]; then
+  runuser -u "$APP_USER" -- env HOME="$APP_HOME" npm_config_cache="$NPM_CACHE" PATH="$RUNTIME:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    bash -lc "cd '$APP' && '$RUNTIME/npm' install --no-audit --no-fund --no-progress"
+fi
+runuser -u "$APP_USER" -- env HOME="$APP_HOME" npm_config_cache="$NPM_CACHE" PATH="$RUNTIME:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+  bash -lc "cd '$APP' && '$RUNTIME/npm' run build"
+
+cat > /etc/nginx/sites-available/touchworkstation <<'NGINX'
+server {
+  listen 8088;
+  server_name _;
+  client_max_body_size 64m;
+
+  location / {
+    proxy_pass http://127.0.0.1:8787;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+  }
+}
+NGINX
+ln -sf /etc/nginx/sites-available/touchworkstation /etc/nginx/sites-enabled/touchworkstation
+rm -f /etc/nginx/sites-enabled/default
+nginx -t
+
+systemctl daemon-reload
+systemctl stop touchworkstation 2>/dev/null || true
+fuser -k 8787/tcp 2>/dev/null || true
+systemctl enable touchworkstation nginx >/dev/null 2>&1 || true
+
+if ! systemctl restart touchworkstation; then
+  echo 'WARNING: TouchWorkstation web service did not start. Run: journalctl -u touchworkstation -n 100 --no-pager' >&2
+fi
+for _ in $(seq 1 40); do systemctl is-active --quiet touchworkstation && break; sleep .25; done
+systemctl restart nginx || true
+
+HOST=$(hostname); IP=$(hostname -I | awk '{print $1}')
+echo
+echo '============================================================'
+echo ' TouchWorkstation installed'
+echo '============================================================'
+echo " Open:     http://${HOST}.local:8088"
+[ -n "$IP" ] && echo " Fallback: http://${IP}:8088"
+if [ "$PW_MUST_CHANGE" = "1" ]; then
+  echo " Beta password: $APP_PASSWORD"
+  echo " You'll be asked to choose your own password on first login."
+else
+  echo " Log in with the password you already set."
+fi
+echo '============================================================'

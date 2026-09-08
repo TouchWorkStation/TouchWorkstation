@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -e
+[ "$EUID" -eq 0 ] || { echo 'Run with sudo.'; exit 1; }
+systemctl restart touchworkstation nginx
+sleep 1
+touchworkstation-status

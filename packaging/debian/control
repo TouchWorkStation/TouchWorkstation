@@ -1,0 +1,11 @@
+Package: touchworkstation
+Version: 1.0.0~beta26
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: TouchWorkstation Beta
+Depends: nginx, git, tmux, curl, ca-certificates, openssl, avahi-daemon, build-essential, python3, make, g++, procps, iproute2, psmisc
+Description: Mobile workstation and developer control center
+ A responsive React interface and local agent for projects, GitHub,
+ development previews, applications, files, terminal, and remote access
+ setup — from your phone.

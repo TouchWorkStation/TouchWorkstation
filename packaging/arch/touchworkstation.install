@@ -1,0 +1,69 @@
+post_install() {
+  APP=/opt/touchworkstation/app
+  ENV_DIR=/etc/touchworkstation
+  ENV_FILE=$ENV_DIR/touchworkstation.env
+  STATE=/var/lib/touchworkstation
+
+  APP_USER="$(getent passwd | awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {print $1; exit}')"
+  if [ -z "$APP_USER" ]; then
+    echo "==> Could not auto-detect a normal user account."
+    echo "    Edit /usr/lib/systemd/system/touchworkstation.service yourself:"
+    echo "    replace TW_USER_PLACEHOLDER / TW_GROUP_PLACEHOLDER with your username/group."
+    APP_USER=root
+  fi
+  APP_GROUP=$(id -gn "$APP_USER" 2>/dev/null || echo "$APP_USER")
+  APP_HOME=$(getent passwd "$APP_USER" | cut -d: -f6)
+
+  mkdir -p "$ENV_DIR" "$STATE" "$APP_HOME/TouchWorkstation/Projects" "$APP_HOME/.local/share/touchworkstation"
+
+  if [ ! -f "$ENV_FILE" ]; then
+    JWT_SECRET=$(openssl rand -hex 48)
+    cat > "$ENV_FILE" <<ENV
+APP_PASSWORD=touchwork
+JWT_SECRET=$JWT_SECRET
+PW_MUST_CHANGE=1
+PORT=8787
+TW_USER=$APP_USER
+TW_HOME=$APP_HOME
+TW_STATE_DIR=$APP_HOME/.local/share/touchworkstation
+TW_ENV_FILE=$ENV_FILE
+HOME=$APP_HOME
+ENV
+    chown root:"$APP_GROUP" "$ENV_FILE"; chmod 660 "$ENV_FILE"
+  fi
+
+  chown -R "$APP_USER:$APP_GROUP" "$APP_HOME/.local" "$STATE" "$APP_HOME/TouchWorkstation" "$APP" 2>/dev/null || true
+
+  sed -i "s/^User=TW_USER_PLACEHOLDER/User=$APP_USER/; s/^Group=TW_GROUP_PLACEHOLDER/Group=$APP_GROUP/" \
+    /usr/lib/systemd/system/touchworkstation.service
+
+  echo
+  echo "============================================================"
+  echo " TouchWorkstation installed. Two steps left:"
+  echo
+  echo "   sudo systemctl enable --now touchworkstation nginx"
+  echo
+  echo " Then open: http://$(hostname).local:8088"
+  if [ "$APP_USER" != root ]; then
+    echo " Beta password: touchwork (you'll be asked to change it on first login)"
+  fi
+  echo "============================================================"
+}
+
+post_upgrade() {
+  # Re-apply the user/group substitution — pacman replaces the unit file
+  # with the fresh placeholder version on every upgrade.
+  ENV_FILE=/etc/touchworkstation/touchworkstation.env
+  APP_USER=$(grep '^TW_USER=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)
+  [ -n "$APP_USER" ] || return 0
+  APP_GROUP=$(id -gn "$APP_USER" 2>/dev/null || echo "$APP_USER")
+  sed -i "s/^User=TW_USER_PLACEHOLDER/User=$APP_USER/; s/^Group=TW_GROUP_PLACEHOLDER/Group=$APP_GROUP/" \
+    /usr/lib/systemd/system/touchworkstation.service
+  chown -R "$APP_USER:$APP_GROUP" /opt/touchworkstation/app 2>/dev/null || true
+  echo "==> Updated. Restart it when convenient: sudo systemctl restart touchworkstation"
+}
+
+pre_remove() {
+  systemctl stop touchworkstation 2>/dev/null || true
+  systemctl disable touchworkstation 2>/dev/null || true
+}

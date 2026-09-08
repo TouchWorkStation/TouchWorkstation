@@ -1,0 +1,26 @@
+{
+  "name": "touchworkstation",
+  "version": "1.0.0-beta.26",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n UI,SERVER \"npm:dev:ui\" \"npm:dev:server\"",
+    "dev:ui": "vite --config ui/vite.config.js",
+    "dev:server": "node --watch server/index.js",
+    "build": "vite build --config ui/vite.config.js",
+    "start": "node server/index.js",
+    "package:deb": "bash scripts/build-deb.sh"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "concurrently": "latest",
+    "express": "latest",
+    "jsonwebtoken": "latest",
+    "lucide-react": "latest",
+    "node-pty": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "vite": "latest",
+    "ws": "latest"
+  }
+}
