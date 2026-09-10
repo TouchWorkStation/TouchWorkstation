@@ -21,12 +21,14 @@ import './styles.css';
 
 // The Arch/Omarchy package builds with VITE_THEME=minimal (see
 // packaging/arch/PKGBUILD) — every other distro's build (.deb/.rpm/generic)
-// never sets it. Flagging it once on <html> lets styles.css skin the whole
-// app (login, setup wizard, dashboard, terminal) to match Omarchy's own
-// look via plain `.omarchy-build …` selectors, instead of threading a theme
-// class through every component by hand.
-const IS_OMARCHY=import.meta.env.VITE_THEME==='minimal';
-if(IS_OMARCHY)document.documentElement.classList.add('omarchy-build');
+// never sets it. This is only the *default* though: Settings > Appearance
+// can override it per-install (settings.uiVariant), since the build-time
+// flag depends on whatever produced the binary actually having set it
+// correctly — a packaging pipeline outside this repo can drift out of sync
+// with it. The effective value is computed per-render in App() from
+// settings, with this constant as the fallback before settings load / for
+// distros that never touch it.
+const BUILD_OMARCHY=import.meta.env.VITE_THEME==='minimal';
 
 const API='/api';
 export async function api(path,opts={}){
@@ -76,13 +78,19 @@ function App(){
  useEffect(()=>{api('/me').then(async m=>{setMe(m);setSettings(await api('/settings'))}).catch(()=>setMe(null)).finally(()=>setLoading(false))},[]);
  // Apply the chosen theme to <html> so the CSS variable overrides take effect.
  useEffect(()=>{const t=settings?.theme||'aubergine';if(t==='aubergine')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=t},[settings?.theme]);
+ // Effective Omarchy variant: settings.uiVariant (set from Settings >
+ // Appearance) wins when present, otherwise fall back to whatever the build
+ // itself was compiled with. Applied to <html> reactively rather than once
+ // at module load, since it can now change at runtime without a rebuild.
+ const omarchy=settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY;
+ useEffect(()=>{document.documentElement.classList.toggle('omarchy-build',omarchy)},[omarchy]);
  if(loading)return <Splash/>;
  if(!me)return <Login onDone={async(pw)=>{setLoginPw(pw);setMe(await api('/me'));setSettings(await api('/settings'))}}/>;
  // A fresh install ships a temporary generated password. Nothing else in the
  // app is reachable until the user sets their own.
  if(me.mustChangePassword)return <ChangePassword currentPassword={loginPw} onDone={()=>{setMe(m=>({...m,mustChangePassword:false}))}}/>;
  if(settings?.onboarded===false)return <SetupWizard me={me} onDone={async()=>{await api('/setup/complete',{method:'POST',body:'{}'});setSettings(await api('/settings'))}}/>;
- return <Shell me={me} settings={settings} setSettings={setSettings}/>;
+ return <Shell me={me} settings={settings} setSettings={setSettings} omarchy={omarchy}/>;
 }
 
 function Mark(){return <div className="tw-mark"><span>›</span><span>_</span></div>}
@@ -147,7 +155,7 @@ const NAV=[
  ['home',Home,'Home'],['projects',Code2,'Projects'],['agents',Bot,'Agents'],['apps',Grid3X3,'Apps'],['files',Folder,'Files'],['terminal',TerminalSquare,'Terminal'],['settings',Settings,'Settings']
 ];
 
-function Shell({me,settings,setSettings}){
+function Shell({me,settings,setSettings,omarchy}){
  const mobile=useMedia('(max-width: 820px)');
  const[view,setView]=useState('home'),[project,setProject]=useState(null),[mobileMenu,setMobileMenu]=useState(false);
  const[navState,setNavState]=useState(null);
@@ -170,10 +178,10 @@ function Shell({me,settings,setSettings}){
  // no sidebar/topbar/dock — on both the home screen and the terminal, so the
  // terminal starts flush at the very top of the screen instead of sitting
  // under a topbar the way every other distro's build still does.
- const bare=IS_OMARCHY&&(view==='home'||view==='terminal')&&!project;
+ const bare=omarchy&&(view==='home'||view==='terminal')&&!project;
  return <div className={'shell '+(mobile?'is-mobile':'is-desktop')}>
  {!mobile&&!bare&&<aside className="sidebar"><Brand/><nav>{NAV.map(([id,Icon,label])=><button key={id} className={view===id&&!project?'active':''} onClick={()=>go(id)}><Icon/><span>{label}</span></button>)}</nav><div className="sidebar-bottom"><div className="machine-chip"><Dot/><div><strong>{me.hostname}</strong><small>Connected</small></div></div><span className="version">{me.version}</span></div></aside>}
- <main className={'main'+(bare?' main-bare':'')}>{!bare&&<Topbar me={me} mobile={mobile} view={view} project={project} onMenu={()=>setMobileMenu(!mobileMenu)} go={go}/>}<div className={'view'+(transitioning?' view-transition':'')+(bare?' view-bare':'')}><Router view={view} go={go} openProject={openProject} openWebview={openWebview} openAgent={openAgent} navState={navState} me={me} project={project} setProject={setProject} settings={settings} setSettings={setSettings}/></div></main>
+ <main className={'main'+(bare?' main-bare':'')}>{!bare&&<Topbar me={me} mobile={mobile} view={view} project={project} onMenu={()=>setMobileMenu(!mobileMenu)} go={go}/>}<div className={'view'+(transitioning?' view-transition':'')+(bare?' view-bare':'')}><Router view={view} go={go} openProject={openProject} openWebview={openWebview} openAgent={openAgent} navState={navState} me={me} project={project} setProject={setProject} settings={settings} setSettings={setSettings} omarchy={omarchy}/></div></main>
  {mobile&&!bare&&<MobileDock view={view} project={project} go={go}/>} {mobile&&mobileMenu&&<MobileSheet go={go} onClose={()=>setMobileMenu(false)}/>}</div>
 }
 function Topbar({me,mobile,view,project,onMenu,go}){
@@ -193,9 +201,9 @@ function Router(p){
    case'preview-full':return <PreviewFullscreen nav={p.navState} go={p.go}/>;
    case'docker':return <DockerView go={p.go}/>;
    case'files':return <Files/>;
-   case'terminal':return <TerminalScreen go={p.go} initialSessionId={p.navState?.sessionId} cwd={p.navState?.cwd} pendingCommand={p.navState?.pendingCommand}/>;
+   case'terminal':return <TerminalScreen go={p.go} omarchy={p.omarchy} initialSessionId={p.navState?.sessionId} cwd={p.navState?.cwd} pendingCommand={p.navState?.pendingCommand}/>;
    case'settings':return <SettingsView settings={p.settings} setSettings={p.setSettings} go={p.go}/>;
-   default:return IS_OMARCHY ? <MinimalDashboard go={p.go}/> : <Dashboard me={p.me} go={p.go} openProject={p.openProject} settings={p.settings}/>;
+   default:return p.omarchy ? <MinimalDashboard go={p.go}/> : <Dashboard me={p.me} go={p.go} openProject={p.openProject} settings={p.settings}/>;
  }
 }
 
@@ -315,6 +323,7 @@ function Metric({label,value,n}){return <div className="metric"><span>{label}</s
 function MobileStat({label,value,detail}){const v=typeof value==='number'?value:0;return <div className="mobile-stat"><div className="ms-top"><span>{label}</span><strong>{v}%</strong></div><div className="ms-bar"><i style={{width:Math.min(100,v)+'%'}}/></div>{detail&&<small className="ms-detail">{detail}</small>}</div>}
 function AccessUrl({label,url}){const[copied,setCopied]=useState(false);return <div className="access-url-row"><div><small>{label}</small><strong>{url}</strong></div><button onClick={()=>{navigator.clipboard?.writeText(url);setCopied(true);setTimeout(()=>setCopied(false),1500)}}>{copied?<Check/>:<Copy/>}</button></div>}
 function themeLabel(t){return({aubergine:'Aubergine',charcoal:'Charcoal',solar:'Solar'})[t||'aubergine']||'Aubergine'}
+function variantLabel(v){return v?(v==='omarchy'?'Omarchy':'Standard'):(BUILD_OMARCHY?'Omarchy (default)':'Standard (default)')}
 function greeting(){const h=new Date().getHours();return h<5?'GOOD NIGHT':h<12?'GOOD MORNING':h<18?'GOOD AFTERNOON':'GOOD EVENING'}
 function Launcher({icon:Icon,label,sub,onClick}){return <button className="launcher" onClick={onClick}><span className="launcher-icon"><Icon/></span><strong>{label}</strong><small>{sub}</small></button>}
 
@@ -551,14 +560,14 @@ function AgentEditor({agent,defaultWorkspace,runtimes,onCancel,onSaved,onLogin,o
 // flow that shouldn't dump its output into your everyday shell) — those show
 // up here too, and you can switch between them or close ones you're done
 // with, but 'main' is always there and always the default landing spot.
-function TerminalScreen({go,initialSessionId,cwd,pendingCommand}){
+function TerminalScreen({go,omarchy,initialSessionId,cwd,pendingCommand}){
  // Omarchy/Arch build only: full-screen, fixed-to-viewport terminal instead
  // of the standard in-flow layout. Being `position:fixed` with a height
  // driven by visualViewport (see the --tw-vvh listener below) is what keeps
  // it pinned to the top of the screen and correctly clipped to the space
  // above the keyboard, rather than the whole page scrolling upward to chase
  // the focused input the way an in-flow element does on iOS.
- const bare=IS_OMARCHY;
+ const bare=omarchy;
  const[active,setActive]=useState(initialSessionId||'main');
  const[sessions,setSessions]=useState(null);
  const[showSwitcher,setShowSwitcher]=useState(false);
@@ -605,7 +614,7 @@ function TerminalScreen({go,initialSessionId,cwd,pendingCommand}){
    <span className="term-tab active">{active==='main'?'Main':active}</span>
    <button className="term-tab add" onClick={newTerminal} title="Open another terminal"><Plus/> New terminal</button>
   </div>}
-  {IS_OMARCHY
+  {omarchy
    ? <MinimalTerminalPTY key={active} sessionId={active} cwd={active===(initialSessionId||'main')?cwd:undefined} pendingCommand={active===(initialSessionId||'main')?pendingCommand:undefined}/>
    : <TerminalPTY key={active} sessionId={active} cwd={active===(initialSessionId||'main')?cwd:undefined} pendingCommand={active===(initialSessionId||'main')?pendingCommand:undefined}/>}
  </div>;
@@ -630,6 +639,7 @@ function SettingsView({settings,setSettings,go}){const[vpn,setVpn]=useState(null
  <Setting icon={GitBranch} title="GitHub" status={github?.connected?'Connected':'Not connected'} text={github?.connected?`Connected as ${github.user||'your GitHub account'}.`:'Do you want to clone, pull and push your projects from your phone?'}><Button onClick={async()=>{if(github?.connected){go('projects');return}try{const sessionId=await resolveTerminalTarget('github-login');go('terminal',{pendingCommand:'gh auth login',sessionId})}catch{go('terminal',{pendingCommand:'gh auth login'})}}}>{github?.connected?'Manage':'Connect GitHub'}</Button></Setting>
  <Setting icon={Bot} title="AI Agents" status="Configurable" text="Agents are configured in the Agents screen — choose a runtime, scope it to a project, and set permissions."><Button onClick={()=>setMsg('Open the Agents screen to create and launch agents.')}>Go to Agents</Button></Setting>
  <Setting icon={Palette} title="Appearance" status={themeLabel(settings?.theme)} text="Choose how TouchWorkstation feels. Your choice is saved and applied instantly."><div className="theme-picker">{[['aubergine','Aubergine','aub'],['charcoal','Charcoal','char'],['solar','Solar','sol']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.theme||'aubergine')===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,theme:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({theme:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
+ <Setting icon={LayoutGrid} title="Interface" status={variantLabel(settings?.uiVariant)} text="Omarchy replaces the home screen and terminal with a full-black, keyboard-driven layout. This overrides whatever the installed build set by default."><div className="theme-picker">{[['standard','Standard','std'],['omarchy','Omarchy','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.uiVariant?settings.uiVariant:(BUILD_OMARCHY?'omarchy':'standard'))===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,uiVariant:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({uiVariant:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
  <Setting icon={Grid3X3} title="Home screen" status={`${(settings?.homeTiles&&settings.homeTiles.length)||4} tiles`} text="Choose which shortcuts show on the home screen, and in what order."><HomeTileSettings settings={settings} setSettings={setSettings}/></Setting>
  <Setting icon={RefreshCcw} title="Updates" status="Beta channel" text="Updates currently install from a signed/released .deb package."><Button onClick={async()=>{try{setMsg((await api('/update/check')).message)}catch(e){setMsg(e.message)}}}>Check for updates</Button></Setting>{msg&&<div className="settings-message"><Info/>{msg}</div>}</div>}
 function Setting({icon:Icon,title,status,text,children}){return <section className="setting-row"><div className="setting-icon"><Icon/></div><div className="setting-copy"><div className="setting-title"><h3>{title}</h3><span>{status}</span></div><p>{text}</p><div className="setting-actions">{children}</div></div></section>}
