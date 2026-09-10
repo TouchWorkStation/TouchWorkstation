@@ -412,12 +412,13 @@ app.post('/api/settings',auth,(req,res)=>{
   const c=loadConfig();
   const body=req.body||{};
   if('theme' in body)c.theme=body.theme;
+  if('uiVariant' in body&&(body.uiVariant==='omarchy'||body.uiVariant==='standard'))c.uiVariant=body.uiVariant;
   if('homeTiles' in body){
     const t=body.homeTiles;
     if(Array.isArray(t)&&t.every(x=>typeof x==='string'))c.homeTiles=t;
   }
   saveConfig(c);
-  res.json({ok:true,theme:c.theme,homeTiles:c.homeTiles});
+  res.json({ok:true,theme:c.theme,homeTiles:c.homeTiles,uiVariant:c.uiVariant});
 });
 function classifyConnection(req){
   const host=(req.hostname||'').toLowerCase();

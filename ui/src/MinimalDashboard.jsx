@@ -1,9 +1,9 @@
 // ui/src/MinimalDashboard.jsx
-// Alternate home screen used only when built with VITE_THEME=minimal (the
-// Arch/Omarchy package sets this — see packaging/arch/PKGBUILD). Every other
-// distro's build (.deb, .rpm, the generic installer) never sets that
-// variable and keeps rendering the standard Dashboard from main.jsx
-// untouched. This file only affects that one build.
+// Alternate home screen for the Omarchy UI variant — on by default when
+// built with VITE_THEME=minimal (the Arch/Omarchy package sets this — see
+// packaging/arch/PKGBUILD), or when the user flips Settings > Appearance >
+// Interface to "Omarchy" at runtime. Every other build/setting keeps
+// rendering the standard Dashboard from main.jsx untouched.
 //
 // Deliberately minimal in scope, not just style: no hero header, no
 // launcher tiles, no dashboard cards — a stats strip and a plain list of

@@ -1,8 +1,9 @@
 // ui/src/MinimalTerminalPTY.jsx
-// Terminal view used only when built with VITE_THEME=minimal (the Arch/
-// Omarchy package — see packaging/arch/PKGBUILD). Every other distro's
-// build keeps rendering the standard TerminalPTY.jsx from ui/src/, byte
-// for byte unchanged.
+// Terminal view for the Omarchy UI variant — on by default when built with
+// VITE_THEME=minimal (the Arch/Omarchy package — see packaging/arch/PKGBUILD),
+// or when the user flips Settings > Appearance > Interface to "Omarchy" at
+// runtime. Every other build/setting keeps rendering the standard
+// TerminalPTY.jsx from ui/src/, byte for byte unchanged.
 //
 // Same backend (websocket for input, polled tmux capture-pane for output)
 // as the standard terminal — this file only changes how it's presented:
@@ -54,17 +55,28 @@ export default function MinimalTerminalPTY({ sessionId = 'main', cwd, pendingCom
     refreshPane();
     pollTimer.current = setInterval(refreshPane, POLL_MS);
 
-    // Same keyboard-avoidance mechanism the standard terminal uses — sets
-    // the CSS var .terminal-screen's own height calc already reads, so
-    // the whole ancestor chain resizes consistently for the keyboard
-    // rather than this component fighting it with a second mechanism.
+    // Keyboard-avoidance. iOS Safari never shrinks the layout viewport (or
+    // `100dvh`) for the software keyboard — only `window.visualViewport`
+    // reports it — so this is the only way to know the keyboard opened at
+    // all. Height alone isn't enough though: iOS can also shift the visual
+    // viewport's own origin (`offsetTop`) up when it repositions the page
+    // around a focused input, and a plain `position:fixed;inset:0` element
+    // doesn't track that — it stays pinned to the *layout* viewport's top
+    // corner, which is what left a dead gap ("the UI hanging") the size of
+    // the keyboard after closing it, and kept it from sitting flush at the
+    // top to begin with. Setting both --tw-vvh and --tw-vv-top every time
+    // either fires, on both 'resize' and 'scroll' (iOS sometimes only
+    // fires one or the other depending on why the viewport changed), keeps
+    // the terminal pinned to wherever the visible viewport actually is.
     const setVVH = () => {
-      const h = window.visualViewport?.height || window.innerHeight;
-      document.documentElement.style.setProperty('--tw-vvh', `${h}px`);
+      const vv = window.visualViewport;
+      document.documentElement.style.setProperty('--tw-vvh', `${vv?.height || window.innerHeight}px`);
+      document.documentElement.style.setProperty('--tw-vv-top', `${vv?.offsetTop || 0}px`);
     };
     setVVH();
     window.addEventListener('resize', setVVH);
     window.visualViewport?.addEventListener('resize', setVVH);
+    window.visualViewport?.addEventListener('scroll', setVVH);
 
     connect();
 
@@ -74,6 +86,7 @@ export default function MinimalTerminalPTY({ sessionId = 'main', cwd, pendingCom
       clearTimeout(reconnectTimer.current);
       window.removeEventListener('resize', setVVH);
       window.visualViewport?.removeEventListener('resize', setVVH);
+      window.visualViewport?.removeEventListener('scroll', setVVH);
       wsRef.current?.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
