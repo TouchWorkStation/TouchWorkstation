@@ -514,6 +514,22 @@ html[data-theme="solar"] body{background:#1a1206}
 .mt-paste-fallback input{flex:1;border:0;background:transparent;outline:none;color:#fff;font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace}
 .mt-paste-fallback button{border:0;background:transparent;color:#7ee787;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;padding:4px 6px}
 
+/* Settings > Build indicator */
+.build-info .setting-title span{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}
+.build-info .setting-title span.build-mismatch{color:#f6b84a}
+.build-rows{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:8px 0 4px}
+.build-rows>div{display:contents}
+.build-rows span{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+.build-rows code{font:11.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#d3ccd6;background:rgba(255,255,255,.04);padding:2px 6px;border-radius:5px;justify-self:start}
+.build-warn{margin:10px 0 0;padding:9px 11px;border-radius:8px;font-size:12px;background:rgba(246,184,74,.1);border:1px solid rgba(246,184,74,.28);color:#f6d9a3}
+
+/* Settings > Updates check result */
+.update-result{margin-top:10px;font-size:12.5px}
+.update-result p{margin:0 0 8px;color:var(--text)}
+.update-cmd{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+.update-cmd span{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-bottom:4px}
+.update-cmd code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:#d3ccd6;word-break:break-all;user-select:all;-webkit-user-select:all}
+
 /* ===== Omarchy/Arch build: whole-app skin =====
    `.omarchy-build` is added to <html> by main.jsx only when built with
    VITE_THEME=minimal, so this reaches every screen a fresh install actually

@@ -222,8 +222,8 @@ function CrashRecoveryBanner(){
   <div className="crash-nudge">
    <Info/>
    <div className="crash-nudge-body">
-    <strong>Hey — while you were away, something happened and I recorded it for you.</strong>
-    <small>{crashes.length===1?'1 restart':`${crashes.length} restarts`} \u00b7 most recent {fmtWhen(latest.at)}</small>
+    <strong>Something's crashed since the server started.</strong>
+    <small>{crashes.length===1?'1 crash':`${crashes.length} crashes`} \u00b7 most recent {fmtWhen(latest.at)}</small>
     <button className="crash-details-toggle" onClick={()=>setExpanded(e=>!e)}>{expanded?'Hide details':'View details'}</button>
     {expanded&&(
      <div className="crash-details">
@@ -641,7 +641,56 @@ function SettingsView({settings,setSettings,go}){const[vpn,setVpn]=useState(null
  <Setting icon={Palette} title="Appearance" status={themeLabel(settings?.theme)} text="Choose how TouchWorkstation feels. Your choice is saved and applied instantly."><div className="theme-picker">{[['aubergine','Aubergine','aub'],['charcoal','Charcoal','char'],['solar','Solar','sol']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.theme||'aubergine')===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,theme:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({theme:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
  <Setting icon={LayoutGrid} title="Interface" status={variantLabel(settings?.uiVariant)} text="Omarchy replaces the home screen and terminal with a full-black, keyboard-driven layout. This overrides whatever the installed build set by default."><div className="theme-picker">{[['standard','Standard','std'],['omarchy','Omarchy','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.uiVariant?settings.uiVariant:(BUILD_OMARCHY?'omarchy':'standard'))===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,uiVariant:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({uiVariant:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
  <Setting icon={Grid3X3} title="Home screen" status={`${(settings?.homeTiles&&settings.homeTiles.length)||4} tiles`} text="Choose which shortcuts show on the home screen, and in what order."><HomeTileSettings settings={settings} setSettings={setSettings}/></Setting>
- <Setting icon={RefreshCcw} title="Updates" status="Beta channel" text="Updates currently install from a signed/released .deb package."><Button onClick={async()=>{try{setMsg((await api('/update/check')).message)}catch(e){setMsg(e.message)}}}>Check for updates</Button></Setting>{msg&&<div className="settings-message"><Info/>{msg}</div>}</div>}
+ <BuildInfo me={me}/>
+ <UpdateCheck/>
+ {msg&&<div className="settings-message"><Info/>{msg}</div>}</div>}
+// Real update check (previous version was a hardcoded placeholder). Hits
+// GitHub, compares against the running build's SHA, and — if there's a
+// newer commit — shows the exact command to apply it, since applying it
+// automatically would require sudo + a self-restarting updater we don't
+// have yet.
+function UpdateCheck(){
+ const[busy,setBusy]=useState(false),[result,setResult]=useState(null);
+ async function check(){
+  setBusy(true); setResult(null);
+  try{setResult(await api('/update/check'))}
+  catch(e){setResult({status:'error',message:e.message})}
+  finally{setBusy(false)}
+ }
+ const statusLabel=result?({'up-to-date':'Up to date','update-available':'Update available','error':'Check failed'}[result.status]||''):' ';
+ return <Setting icon={RefreshCcw} title="Updates" status={statusLabel} text="Compares this install with the latest commit on GitHub.">
+  <Button onClick={check} disabled={busy}>{busy?'Checking…':'Check for updates'}</Button>
+  {result&&<div className="update-result">
+   <p>{result.message}</p>
+   {result.status==='update-available'&&result.installCommand&&<div className="update-cmd">
+    <span>Run on this machine to apply:</span>
+    <code>{result.installCommand}</code>
+   </div>}
+  </div>}
+ </Setting>;
+}
+// A visible build indicator, at the bottom of Settings. Shows the git
+// commit the server was built from, the commit the loaded frontend bundle
+// was built from, when the server process started, and whether the two
+// SHAs match. If the frontend SHA differs from the server's, the browser
+// is running a stale cached bundle and needs a hard refresh — otherwise
+// "did my new code actually get deployed?" is unanswerable except by
+// behavior, which is exactly the debugging trap this exists to prevent.
+function BuildInfo({me}){
+ const serverBuild=me?.build||'—';
+ const uiBuild=typeof __BUILD_SHA__==='string'?__BUILD_SHA__:'—';
+ const uiTheme=typeof __BUILD_THEME__==='string'?__BUILD_THEME__:'—';
+ const mismatch=serverBuild!=='—'&&uiBuild!=='—'&&uiBuild!=='unknown'&&serverBuild!==uiBuild;
+ return <section className="setting-row build-info"><div className="setting-icon"><Info/></div><div className="setting-copy"><div className="setting-title"><h3>Build</h3><span className={mismatch?'build-mismatch':''}>{mismatch?'mismatched':uiBuild}</span></div>
+  <div className="build-rows">
+   <div><span>server</span><code>{serverBuild}</code></div>
+   <div><span>this page</span><code>{uiBuild}</code></div>
+   <div><span>variant baked in</span><code>{uiTheme}</code></div>
+   {me?.startedAt&&<div><span>server started</span><code>{fmtWhen(me.startedAt)}</code></div>}
+  </div>
+  {mismatch&&<p className="build-warn">This browser is running an older bundle than the server. Hard refresh (Ctrl+Shift+R), or fully close and reopen the tab / PWA.</p>}
+ </div></section>;
+}
 function Setting({icon:Icon,title,status,text,children}){return <section className="setting-row"><div className="setting-icon"><Icon/></div><div className="setting-copy"><div className="setting-title"><h3>{title}</h3><span>{status}</span></div><p>{text}</p><div className="setting-actions">{children}</div></div></section>}
 
 // Visible error overlay: if anything throws during render or on load, show

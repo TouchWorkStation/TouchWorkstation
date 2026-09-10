@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
-import {execFile, exec, spawn} from 'child_process';
+import {execFile, exec, execSync, spawn} from 'child_process';
 import {promisify} from 'util';
 import crypto from 'crypto';
 import http from 'http';
@@ -21,6 +21,25 @@ app.set('trust proxy','loopback');
 app.use(express.json({limit:'5mb'}));
 const PORT=Number(process.env.PORT||8787);
 const HOME=process.env.TW_HOME||os.homedir();
+
+// The commit this server was built from, so the UI can show what's actually
+// running and warn if the frontend bundle it loaded doesn't match. Same
+// three-source resolution as the vite config uses: prefer build-info.json
+// (written by the packaging step), fall back to `git rev-parse` (dev),
+// fall back to 'unknown' (never fail startup over this).
+function resolveBuildSha(){
+  try{
+    const p=path.resolve(process.cwd(),'build-info.json');
+    const info=JSON.parse(fs.readFileSync(p,'utf8'));
+    if(info?.sha)return String(info.sha).slice(0,12);
+  }catch{}
+  try{
+    return execSync('git rev-parse --short=12 HEAD',{cwd:process.cwd()}).toString().trim();
+  }catch{}
+  return 'unknown';
+}
+const BUILD_SHA=resolveBuildSha();
+const PROCESS_STARTED_AT=new Date().toISOString();
 
 const CRASH_LOG_FILE=path.join(HOME,'.touchworkstation','crash-log.json');
 function recordCrash(kind,err){
@@ -92,7 +111,7 @@ let runners=new Map();
 function parseCookies(req){return Object.fromEntries((req.headers.cookie||'').split(';').map(x=>x.trim()).filter(Boolean).map(x=>{const i=x.indexOf('=');return [x.slice(0,i),decodeURIComponent(x.slice(i+1))]}));}
 function auth(req,res,next){try{const t=parseCookies(req).tw_session||req.headers.authorization?.replace('Bearer ','');if(!t)throw 0;req.user=jwt.verify(t,JWT_SECRET);next()}catch{res.status(401).json({error:'Not authenticated'})}}
 app.post('/api/login',(req,res)=>{if(req.body.password!==APP_PASSWORD)return res.status(401).json({error:'Invalid password'});const token=jwt.sign({sub:os.userInfo().username},JWT_SECRET,{expiresIn:'30d'});res.setHeader('Set-Cookie',`tw_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`);res.json({ok:true,mustChangePassword:PW_MUST_CHANGE})});
-app.get('/api/me',auth,(req,res)=>res.json({hostname:os.hostname(),user:os.userInfo().username,version:'1.0.0-beta.26',mustChangePassword:PW_MUST_CHANGE}));
+app.get('/api/me',auth,(req,res)=>res.json({hostname:os.hostname(),user:os.userInfo().username,version:'1.0.0-beta.26',build:BUILD_SHA,startedAt:PROCESS_STARTED_AT,mustChangePassword:PW_MUST_CHANGE}));
 
 // Rewrite APP_PASSWORD= (and clear PW_MUST_CHANGE) in the env file in place,
 // preserving every other line, so systemd/postinst keep reading the same
@@ -182,10 +201,18 @@ app.get('/api/terminal/sessions/:id/history',auth,async(req,res)=>{
   }catch(e){res.status(400).json({error:String(e.stderr||e.message)})}
 });
 app.get('/api/crash-log',auth,(req,res)=>{
+  // Only crashes from BEFORE this process started are noise now — the crash
+  // that caused the restart is captured to disk, then the fresh process
+  // reads its own start time and treats anything older as history. A
+  // crash-loop from a previous session (e.g. 48 EADDRINUSE entries from a
+  // stuck port) doesn't show as "8 restarts happened while you were away"
+  // to a user who just successfully restarted the service.
   try{
     const log=JSON.parse(fs.readFileSync(CRASH_LOG_FILE,'utf8'));
-    res.json({crashes:Array.isArray(log)?log:[]});
-  }catch{res.json({crashes:[]})}
+    const arr=Array.isArray(log)?log:[];
+    const sinceCurrent=arr.filter(c=>c?.at&&c.at>=PROCESS_STARTED_AT);
+    res.json({crashes:sinceCurrent,startedAt:PROCESS_STARTED_AT});
+  }catch{res.json({crashes:[],startedAt:PROCESS_STARTED_AT})}
 });
 app.post('/api/crash-log/ack',auth,(req,res)=>{
   try{fs.writeFileSync(CRASH_LOG_FILE,'[]')}catch{}
@@ -248,7 +275,6 @@ app.get('/api/files',auth,(req,res)=>{try{const p=safeHome(req.query.path||HOME)
 app.post('/api/terminal/exec',auth,async(req,res)=>{const command=String(req.body.command||'').trim();if(!command)return res.json({output:''});try{const {stdout,stderr}=await sh(command,{cwd:HOME,timeout:30000,maxBuffer:2_000_000,shell:'/bin/bash'});res.json({output:(stdout||'')+(stderr||'')})}catch(e){res.status(400).json({error:(e.stdout||'')+(e.stderr||e.message)})}});
 
 const projectRoots=()=>[PROJECTS_DEFAULT,path.join(HOME,'Projects'),path.join(HOME,'Developer'),path.join(HOME,'Code'),path.join(HOME,'src')].filter((x,i,a)=>a.indexOf(x)===i&&fs.existsSync(x));
-import {execSync} from 'child_process';
 function sync(cmd,env){try{return execSync(cmd,{encoding:'utf8',stdio:['ignore','pipe','ignore'],shell:'/bin/bash',env:env||process.env}).trim()}catch{return''}}
 function detectProject(dir){let stack='Project',runCommand='',port=null,installCommand='';const pkgPath=path.join(dir,'package.json');if(fs.existsSync(pkgPath)){try{const p=JSON.parse(fs.readFileSync(pkgPath,'utf8'));const deps={...(p.dependencies||{}),...(p.devDependencies||{})};if(deps.vite){stack='Vite';port=5173}else if(deps.next){stack='Next.js';port=3000}else if(deps.react){stack='React';port=3000}else if(deps.vue){stack='Vue';port=5173}else if(deps['@angular/core']){stack='Angular';port=4200}else{stack='Node.js';port=3000}if(p.scripts?.dev)runCommand='npm run dev';else if(p.scripts?.start)runCommand='npm start';
   // --include=dev forces devDependencies to install even if NODE_ENV is set
@@ -472,7 +498,36 @@ app.post('/api/vpn/up',auth,async(req,res)=>{
     res.json({needsTerminal:true,command:'sudo tailscale up',message:'Run this in Terminal to sign in, then return here.'});
   }
 });
-app.get('/api/update/check',auth,(req,res)=>res.json({message:'You are running the GitHub-ready beta. Automatic signed update checks will be enabled after the first public release.'}));
+// Check GitHub for a newer commit on master than what this server was
+// built from. Doesn't try to *apply* the update — self-updating a running
+// systemd service reliably needs sudo, a separate updater script, and
+// crash-recovery paths that don't belong in a REST handler — but it tells
+// the user honestly whether an update exists and hands them the exact
+// commands to apply it, instead of the previous hardcoded "coming soon".
+app.get('/api/update/check',auth,async(req,res)=>{
+  try{
+    const r=await fetch('https://api.github.com/repos/TouchWorkStation/TouchWorkstation/commits/master',{headers:{'Accept':'application/vnd.github+json','User-Agent':'touchworkstation-update-check'}});
+    if(!r.ok){res.json({status:'error',message:`GitHub said HTTP ${r.status} — try again later.`});return}
+    const j=await r.json();
+    const latest=String(j.sha||'').slice(0,12);
+    const running=BUILD_SHA;
+    const upToDate=latest&&running&&latest!=='unknown'&&latest===running;
+    res.json({
+      status:upToDate?'up-to-date':'update-available',
+      running,
+      latest:latest||'unknown',
+      // The install command matches the Arch package's install flow (see
+      // packaging/arch/PKGBUILD's -git source URL). Keeping it in one
+      // place — here — means the UI never has to know packaging details.
+      installCommand:'cd ~/touchworkstation-git && git pull && makepkg -si',
+      message:upToDate
+        ?`You're running the latest commit (${running}).`
+        :`New commit available: ${latest} (running ${running}).`,
+    });
+  }catch(e){
+    res.json({status:'error',message:`Could not reach GitHub: ${e.message}`});
+  }
+});
 
 // Preview reverse proxy: /preview/:port/* -> local dev server, served from
 // the SAME origin as TouchWorkstation so it's reachable from any device
