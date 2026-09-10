@@ -60,7 +60,18 @@ post_upgrade() {
   sed -i "s/^User=TW_USER_PLACEHOLDER/User=$APP_USER/; s/^Group=TW_GROUP_PLACEHOLDER/Group=$APP_GROUP/" \
     /usr/lib/systemd/system/touchworkstation.service
   chown -R "$APP_USER:$APP_GROUP" /opt/touchworkstation/app 2>/dev/null || true
-  echo "==> Updated. Restart it when convenient: sudo systemctl restart touchworkstation"
+  # A rebuilt bundle on disk doesn't do anything on its own — Node keeps
+  # running whatever code was already loaded in memory until the process
+  # restarts. Without this, every upgrade silently kept serving the old
+  # backend (new frontend static files WOULD still be picked up fresh since
+  # nothing caches those in-process, but any server-side change — new API
+  # fields, new routes — just never took effect no matter how many times
+  # you reinstalled).
+  systemctl daemon-reload
+  if ! systemctl restart touchworkstation; then
+    echo "WARNING: TouchWorkstation did not restart automatically — run: sudo systemctl restart touchworkstation" >&2
+  fi
+  echo "==> Updated and restarted."
 }
 
 pre_remove() {
