@@ -459,38 +459,53 @@ html[data-theme="solar"] body{background:#1a1206}
 .term-paste-fallback .tab-open{flex:none;background:var(--accent);color:#fff;border:0;border-radius:9px;padding:9px 13px;font-size:12px;font-weight:600}
 .term-paste-fallback .tab-x{flex:none;width:30px;height:30px;border:1px solid var(--line2);background:rgba(255,255,255,.05);color:#c6bfcb;border-radius:8px;font-size:12px}
 
-/* ===== minimal home (Omarchy/Arch build, VITE_THEME=minimal only) ===== */
+/* ===== Omarchy/Arch build only (VITE_THEME=minimal) =====
+   Omarchy's own look (omarchy.org) is stark: true black, monospace
+   everywhere (even headings render in a blocky pixel typeface), white text,
+   almost no color — a single accent used sparingly for state (a terminal
+   green "live" dot), flat 1px hairline borders instead of soft glass panels.
+   The variables below are scoped to .minimal-home/.mt-root/.terminal-bare
+   only, so every other distro's build keeps TouchWorkstation's own
+   aubergine theme untouched. */
 .main-bare{margin:0;padding:0}
 .is-desktop .main-bare{margin-left:0}
 .view-bare{padding:0!important;max-width:none!important;height:100%}
-.minimal-home{position:relative;height:100dvh;width:100%;overflow:hidden;display:flex;flex-direction:column;color:#f1eefc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-.minimal-home-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
-.minimal-home-scrim{position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,rgba(6,4,10,.55) 0%,rgba(6,4,10,.05) 22%,rgba(6,4,10,.05) 55%,rgba(6,4,10,.75) 100%)}
+.minimal-home{position:relative;height:100dvh;width:100%;overflow:hidden;display:flex;flex-direction:column;color:#eee;background:#000;font-family:ui-monospace,SFMono-Regular,'JetBrains Mono',Menlo,Consolas,monospace}
+.minimal-home-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;filter:grayscale(.25) brightness(.8)}
+.minimal-home-scrim{position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,rgba(0,0,0,.7) 0%,rgba(0,0,0,.15) 22%,rgba(0,0,0,.15) 55%,rgba(0,0,0,.82) 100%)}
+.minimal-home::after{content:'';position:absolute;inset:0;z-index:1;pointer-events:none;opacity:.5;background-image:radial-gradient(rgba(255,255,255,.09) 1px,transparent 1px);background-size:15px 15px}
 .minimal-stats{position:relative;z-index:2;display:flex;align-items:flex-start;justify-content:space-between;padding:calc(env(safe-area-inset-top) + 22px) 22px 18px;gap:6px}
 .minimal-stat{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;text-align:center;position:relative;padding:0 6px}
-.minimal-stat:not(:last-child)::after{content:'';position:absolute;right:0;top:4px;bottom:4px;width:1px;background:rgba(255,255,255,.14)}
-.minimal-stat svg{width:19px;height:19px;color:#b3a1f2;stroke-width:1.6}
-.minimal-stat-label{font-size:10px;letter-spacing:.14em;color:#c9c0e8;text-transform:uppercase;margin-top:1px}
+.minimal-stat:not(:last-child)::after{content:'';position:absolute;right:0;top:4px;bottom:4px;width:1px;background:rgba(255,255,255,.16)}
+.minimal-stat svg{width:19px;height:19px;color:#7ee787;stroke-width:1.6}
+.minimal-stat-label{font-size:10px;letter-spacing:.14em;color:#9a9a9a;text-transform:uppercase;margin-top:1px}
 .minimal-stat strong{font-size:19px;font-weight:700;color:#fff;letter-spacing:-.01em}
-.minimal-stat small{display:flex;align-items:center;gap:4px;font-size:10.5px;color:#cfc7ea;margin-top:1px}
-.minimal-stat small svg{width:11px;height:11px;color:#b3a1f2}
+.minimal-stat small{display:flex;align-items:center;gap:4px;font-size:10.5px;color:#b3b3b3;margin-top:1px}
+.minimal-stat small svg{width:11px;height:11px;color:#7ee787}
 .minimal-nav{position:relative;z-index:2;margin-top:auto;display:flex;flex-direction:column;padding:0 30px calc(env(safe-area-inset-bottom) + 34px)}
-.minimal-nav-item{display:flex;align-items:center;gap:22px;padding:15px 4px;background:transparent;border:0;color:#f1eefc;text-align:left}
-.minimal-nav-item svg{width:23px;height:23px;color:#b3a1f2;stroke-width:1.6;flex:none}
-.minimal-nav-item span{font-size:15px;letter-spacing:.12em;text-transform:uppercase;font-weight:500;color:#e8e4f7}
+.minimal-nav-item{display:flex;align-items:center;gap:22px;padding:15px 4px;background:transparent;border:0;border-top:1px solid rgba(255,255,255,.08);color:#eee;text-align:left}
+.minimal-nav-item:first-child{border-top:0}
+.minimal-nav-item svg{width:21px;height:21px;color:#7ee787;stroke-width:1.5;flex:none}
+.minimal-nav-item span{font-size:14px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:#eee}
 .minimal-nav-item:active{opacity:.6}
 
-/* ===== minimal terminal (Omarchy/Arch build, VITE_THEME=minimal only) ===== */
-.mt-root{flex:1;min-height:0;display:flex;flex-direction:column;position:relative;overflow:hidden;background:#0a0e1f}
-.mt-pane{flex:1;min-height:0;margin:0;padding:16px 16px 8px;overflow-y:auto;-webkit-overflow-scrolling:touch;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c9d3f0;white-space:pre-wrap;word-break:break-word;user-select:text;-webkit-user-select:text}
-.mt-prompt-row{display:flex;align-items:center;gap:10px;padding:6px 16px 10px;flex:none}
-.mt-caret{color:#b3a1f2;font-size:15px;font-weight:700;flex:none}
-.mt-prompt-row input{flex:1;border:0;background:transparent;outline:none;color:#e9edfb;font:13.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;padding:4px 0;-webkit-appearance:none}
-.mt-keys{display:flex;gap:2px;padding:0 12px calc(env(safe-area-inset-bottom) + 10px);flex:none;overflow-x:auto;-webkit-overflow-scrolling:touch}
-.mt-keys button{flex:none;border:0;background:transparent;color:#6b7394;font:11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:9px 11px;text-transform:lowercase}
-.mt-keys button:active{color:#b3a1f2}
-.mt-auth{display:flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(179,161,242,.1);border-top:1px solid rgba(179,161,242,.25);flex:none;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#c9d3f0}
-.mt-auth button{border:0;background:transparent;color:#b3a1f2;font:inherit;padding:4px 6px}
-.mt-paste-fallback{display:flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(10,14,31,.95);border-top:1px solid rgba(255,255,255,.08);flex:none}
-.mt-paste-fallback input{flex:1;border:0;background:transparent;outline:none;color:#e9edfb;font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace}
-.mt-paste-fallback button{border:0;background:transparent;color:#b3a1f2;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;padding:4px 6px}
+/* ===== Omarchy/Arch terminal — full-screen, fixed to the viewport ===== */
+.terminal-bare{position:fixed;inset:0;height:var(--tw-vvh, 100dvh);z-index:30;background:#000}
+.terminal-bare .term-switch-bar{background:#000;border-bottom:1px solid rgba(255,255,255,.1);padding-top:calc(env(safe-area-inset-top) + 8px)}
+.terminal-bare .term-tab{background:transparent;border-color:rgba(255,255,255,.16);color:#8a8a8a;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.terminal-bare .term-tab.active{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.35);color:#fff}
+.terminal-bare .term-tab.add{color:#7ee787;border-style:dashed}
+.terminal-bare .term-tab.close{color:#e77}
+.mt-root{flex:1;min-height:0;display:flex;flex-direction:column;position:relative;overflow:hidden;background:#000}
+.mt-pane{flex:1;min-height:0;margin:0;padding:16px 16px 8px;overflow-y:auto;-webkit-overflow-scrolling:touch;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:#d6d6d6;white-space:pre-wrap;word-break:break-word;user-select:text;-webkit-user-select:text}
+.mt-prompt-row{display:flex;align-items:center;gap:10px;padding:6px 16px 10px;flex:none;border-top:1px solid rgba(255,255,255,.08)}
+.mt-caret{color:#7ee787;font-size:15px;font-weight:700;flex:none}
+.mt-prompt-row input{flex:1;border:0;background:transparent;outline:none;color:#fff;font:13.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;padding:4px 0;-webkit-appearance:none}
+.mt-keys{display:flex;gap:2px;padding:0 12px calc(env(safe-area-inset-bottom) + 10px);flex:none;overflow-x:auto;-webkit-overflow-scrolling:touch;border-top:1px solid rgba(255,255,255,.08)}
+.mt-keys button{flex:none;border:0;background:transparent;color:#6b6b6b;font:11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:9px 11px;text-transform:lowercase}
+.mt-keys button:active{color:#7ee787}
+.mt-auth{display:flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(126,231,135,.1);border-top:1px solid rgba(126,231,135,.3);flex:none;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#d6d6d6}
+.mt-auth button{border:0;background:transparent;color:#7ee787;font:inherit;padding:4px 6px}
+.mt-paste-fallback{display:flex;align-items:center;gap:8px;padding:8px 16px;background:#000;border-top:1px solid rgba(255,255,255,.1);flex:none}
+.mt-paste-fallback input{flex:1;border:0;background:transparent;outline:none;color:#fff;font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace}
+.mt-paste-fallback button{border:0;background:transparent;color:#7ee787;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;padding:4px 6px}

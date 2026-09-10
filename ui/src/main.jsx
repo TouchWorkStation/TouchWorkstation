@@ -157,11 +157,15 @@ function Shell({me,settings,setSettings}){
  const openProject=(p)=>{setProject(p);setTransitioning(true);setTimeout(()=>setTransitioning(false),180)};
  const openWebview=(app)=>go('webview',{app});
  const openAgent=(agentId)=>go('agent-detail',{agentId});
- const minimalHome=import.meta.env.VITE_THEME==='minimal'&&view==='home'&&!project;
+ // Omarchy/Arch build (VITE_THEME=minimal) gets a bare, chrome-free shell —
+ // no sidebar/topbar/dock — on both the home screen and the terminal, so the
+ // terminal starts flush at the very top of the screen instead of sitting
+ // under a topbar the way every other distro's build still does.
+ const bare=import.meta.env.VITE_THEME==='minimal'&&(view==='home'||view==='terminal')&&!project;
  return <div className={'shell '+(mobile?'is-mobile':'is-desktop')}>
- {!mobile&&!minimalHome&&<aside className="sidebar"><Brand/><nav>{NAV.map(([id,Icon,label])=><button key={id} className={view===id&&!project?'active':''} onClick={()=>go(id)}><Icon/><span>{label}</span></button>)}</nav><div className="sidebar-bottom"><div className="machine-chip"><Dot/><div><strong>{me.hostname}</strong><small>Connected</small></div></div><span className="version">{me.version}</span></div></aside>}
- <main className={'main'+(minimalHome?' main-bare':'')}>{!minimalHome&&<Topbar me={me} mobile={mobile} view={view} project={project} onMenu={()=>setMobileMenu(!mobileMenu)} go={go}/>}<div className={'view'+(transitioning?' view-transition':'')+(minimalHome?' view-bare':'')}><Router view={view} go={go} openProject={openProject} openWebview={openWebview} openAgent={openAgent} navState={navState} me={me} project={project} setProject={setProject} settings={settings} setSettings={setSettings}/></div></main>
- {mobile&&!minimalHome&&<MobileDock view={view} project={project} go={go}/>} {mobile&&mobileMenu&&<MobileSheet go={go} onClose={()=>setMobileMenu(false)}/>}</div>
+ {!mobile&&!bare&&<aside className="sidebar"><Brand/><nav>{NAV.map(([id,Icon,label])=><button key={id} className={view===id&&!project?'active':''} onClick={()=>go(id)}><Icon/><span>{label}</span></button>)}</nav><div className="sidebar-bottom"><div className="machine-chip"><Dot/><div><strong>{me.hostname}</strong><small>Connected</small></div></div><span className="version">{me.version}</span></div></aside>}
+ <main className={'main'+(bare?' main-bare':'')}>{!bare&&<Topbar me={me} mobile={mobile} view={view} project={project} onMenu={()=>setMobileMenu(!mobileMenu)} go={go}/>}<div className={'view'+(transitioning?' view-transition':'')+(bare?' view-bare':'')}><Router view={view} go={go} openProject={openProject} openWebview={openWebview} openAgent={openAgent} navState={navState} me={me} project={project} setProject={setProject} settings={settings} setSettings={setSettings}/></div></main>
+ {mobile&&!bare&&<MobileDock view={view} project={project} go={go}/>} {mobile&&mobileMenu&&<MobileSheet go={go} onClose={()=>setMobileMenu(false)}/>}</div>
 }
 function Topbar({me,mobile,view,project,onMenu,go}){
  const label=project?project.name:(NAV.find(n=>n[0]===view)?.[2]||'Home');
@@ -539,6 +543,13 @@ function AgentEditor({agent,defaultWorkspace,runtimes,onCancel,onSaved,onLogin,o
 // up here too, and you can switch between them or close ones you're done
 // with, but 'main' is always there and always the default landing spot.
 function TerminalScreen({initialSessionId,cwd,pendingCommand}){
+ // Omarchy/Arch build only: full-screen, fixed-to-viewport terminal instead
+ // of the standard in-flow layout. Being `position:fixed` with a height
+ // driven by visualViewport (see the --tw-vvh listener below) is what keeps
+ // it pinned to the top of the screen and correctly clipped to the space
+ // above the keyboard, rather than the whole page scrolling upward to chase
+ // the focused input the way an in-flow element does on iOS.
+ const bare=import.meta.env.VITE_THEME==='minimal';
  const[active,setActive]=useState(initialSessionId||'main');
  const[sessions,setSessions]=useState(null);
  const[showSwitcher,setShowSwitcher]=useState(false);
@@ -567,7 +578,7 @@ function TerminalScreen({initialSessionId,cwd,pendingCommand}){
   const id='t'+Date.now().toString(36);
   setActive(id);setShowSwitcher(false);
  }
- return <div className="terminal-screen">
+ return <div className={'terminal-screen'+(bare?' terminal-bare':'')}>
   {(others.length>0)&&<div className="term-switch-bar">
    <button className="term-tab active">{active==='main'?'Main':active}</button>
    {others.map(s=><button key={s.id} className="term-tab" onClick={()=>setActive(s.id)}>{s.id==='main'?'Main':s.id}</button>)}
