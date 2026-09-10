@@ -19,6 +19,15 @@ import { RemoteAccess } from './RemoteAccess.jsx';
 import { DockerView } from './DockerView.jsx';
 import './styles.css';
 
+// The Arch/Omarchy package builds with VITE_THEME=minimal (see
+// packaging/arch/PKGBUILD) — every other distro's build (.deb/.rpm/generic)
+// never sets it. Flagging it once on <html> lets styles.css skin the whole
+// app (login, setup wizard, dashboard, terminal) to match Omarchy's own
+// look via plain `.omarchy-build …` selectors, instead of threading a theme
+// class through every component by hand.
+const IS_OMARCHY=import.meta.env.VITE_THEME==='minimal';
+if(IS_OMARCHY)document.documentElement.classList.add('omarchy-build');
+
 const API='/api';
 export async function api(path,opts={}){
   const r=await fetch(API+path,{credentials:'include',headers:{'Content-Type':'application/json',...(opts.headers||{})},...opts});
@@ -85,7 +94,7 @@ function Empty({children}){return <div className="empty-state">{children}</div>}
 function SectionHead({title,action}){return <div className="section-head"><h2>{title}</h2>{action}</div>}
 
 function Splash(){return <div className="splash"><Mark/><h1>TouchWorkstation</h1><p>Your Linux workstation. In your pocket.</p></div>}
-function Login({onDone}){const[pw,setPw]=useState(''),[err,setErr]=useState(''),[busy,setBusy]=useState(false);async function submit(e){e.preventDefault();setBusy(true);setErr('');try{await api('/login',{method:'POST',body:JSON.stringify({password:pw})});await onDone(pw)}catch{setErr('That password did not work.')}finally{setBusy(false)}}return <div className="auth-page"><form className="auth-card" onSubmit={submit}><Mark/><span className="kicker">WELCOME BACK</span><h1>Open your workstation.</h1><p>Connect securely to this computer.</p><input autoFocus type="password" placeholder="TouchWorkstation password" value={pw} onChange={e=>setPw(e.target.value)}/><Button className="primary" disabled={busy}>{busy?'Connecting…':'Unlock'}</Button>{err&&<div className="inline-error">{err}</div>}</form></div>}
+function Login({onDone}){const[pw,setPw]=useState(''),[err,setErr]=useState(''),[busy,setBusy]=useState(false);async function submit(e){e.preventDefault();setBusy(true);setErr('');try{await api('/login',{method:'POST',body:JSON.stringify({password:pw})});await onDone(pw)}catch(e){setErr(e.message==='AUTH'?'That password did not work.':'Can’t reach TouchWorkstation right now — make sure it’s still running, then try again.')}finally{setBusy(false)}}return <div className="auth-page"><form className="auth-card" onSubmit={submit}><Mark/><span className="kicker">WELCOME BACK</span><h1>Open your workstation.</h1><p>Connect securely to this computer.</p><input autoFocus type="password" placeholder="TouchWorkstation password" value={pw} onChange={e=>setPw(e.target.value)}/><Button className="primary" disabled={busy}>{busy?'Connecting…':'Unlock'}</Button>{err&&<div className="inline-error">{err}</div>}</form></div>}
 
 function ChangePassword({currentPassword,onDone}){
  const[cur,setCur]=useState(currentPassword||''),[next,setNext]=useState(''),[confirm,setConfirm]=useState(''),[err,setErr]=useState(''),[busy,setBusy]=useState(false);
@@ -161,7 +170,7 @@ function Shell({me,settings,setSettings}){
  // no sidebar/topbar/dock — on both the home screen and the terminal, so the
  // terminal starts flush at the very top of the screen instead of sitting
  // under a topbar the way every other distro's build still does.
- const bare=import.meta.env.VITE_THEME==='minimal'&&(view==='home'||view==='terminal')&&!project;
+ const bare=IS_OMARCHY&&(view==='home'||view==='terminal')&&!project;
  return <div className={'shell '+(mobile?'is-mobile':'is-desktop')}>
  {!mobile&&!bare&&<aside className="sidebar"><Brand/><nav>{NAV.map(([id,Icon,label])=><button key={id} className={view===id&&!project?'active':''} onClick={()=>go(id)}><Icon/><span>{label}</span></button>)}</nav><div className="sidebar-bottom"><div className="machine-chip"><Dot/><div><strong>{me.hostname}</strong><small>Connected</small></div></div><span className="version">{me.version}</span></div></aside>}
  <main className={'main'+(bare?' main-bare':'')}>{!bare&&<Topbar me={me} mobile={mobile} view={view} project={project} onMenu={()=>setMobileMenu(!mobileMenu)} go={go}/>}<div className={'view'+(transitioning?' view-transition':'')+(bare?' view-bare':'')}><Router view={view} go={go} openProject={openProject} openWebview={openWebview} openAgent={openAgent} navState={navState} me={me} project={project} setProject={setProject} settings={settings} setSettings={setSettings}/></div></main>
@@ -184,9 +193,9 @@ function Router(p){
    case'preview-full':return <PreviewFullscreen nav={p.navState} go={p.go}/>;
    case'docker':return <DockerView go={p.go}/>;
    case'files':return <Files/>;
-   case'terminal':return <TerminalScreen initialSessionId={p.navState?.sessionId} cwd={p.navState?.cwd} pendingCommand={p.navState?.pendingCommand}/>;
+   case'terminal':return <TerminalScreen go={p.go} initialSessionId={p.navState?.sessionId} cwd={p.navState?.cwd} pendingCommand={p.navState?.pendingCommand}/>;
    case'settings':return <SettingsView settings={p.settings} setSettings={p.setSettings} go={p.go}/>;
-   default:return import.meta.env.VITE_THEME==='minimal' ? <MinimalDashboard go={p.go}/> : <Dashboard me={p.me} go={p.go} openProject={p.openProject} settings={p.settings}/>;
+   default:return IS_OMARCHY ? <MinimalDashboard go={p.go}/> : <Dashboard me={p.me} go={p.go} openProject={p.openProject} settings={p.settings}/>;
  }
 }
 
@@ -542,14 +551,14 @@ function AgentEditor({agent,defaultWorkspace,runtimes,onCancel,onSaved,onLogin,o
 // flow that shouldn't dump its output into your everyday shell) — those show
 // up here too, and you can switch between them or close ones you're done
 // with, but 'main' is always there and always the default landing spot.
-function TerminalScreen({initialSessionId,cwd,pendingCommand}){
+function TerminalScreen({go,initialSessionId,cwd,pendingCommand}){
  // Omarchy/Arch build only: full-screen, fixed-to-viewport terminal instead
  // of the standard in-flow layout. Being `position:fixed` with a height
  // driven by visualViewport (see the --tw-vvh listener below) is what keeps
  // it pinned to the top of the screen and correctly clipped to the space
  // above the keyboard, rather than the whole page scrolling upward to chase
  // the focused input the way an in-flow element does on iOS.
- const bare=import.meta.env.VITE_THEME==='minimal';
+ const bare=IS_OMARCHY;
  const[active,setActive]=useState(initialSessionId||'main');
  const[sessions,setSessions]=useState(null);
  const[showSwitcher,setShowSwitcher]=useState(false);
@@ -578,18 +587,25 @@ function TerminalScreen({initialSessionId,cwd,pendingCommand}){
   const id='t'+Date.now().toString(36);
   setActive(id);setShowSwitcher(false);
  }
+ // In the bare Omarchy shell the topbar/sidebar/mobile dock are all hidden
+ // (see Shell's `bare` flag), so without this the switch bar's home button is
+ // the ONLY way back to the rest of the app — otherwise the terminal is a
+ // dead end.
+ const homeBtn=bare&&<button className="term-tab home" onClick={()=>go('home')} title="Home"><House/></button>;
  return <div className={'terminal-screen'+(bare?' terminal-bare':'')}>
   {(others.length>0)&&<div className="term-switch-bar">
+   {homeBtn}
    <button className="term-tab active">{active==='main'?'Main':active}</button>
    {others.map(s=><button key={s.id} className="term-tab" onClick={()=>setActive(s.id)}>{s.id==='main'?'Main':s.id}</button>)}
    <button className="term-tab add" onClick={newTerminal} title="New terminal"><Plus/></button>
    {active!=='main'&&<button className="term-tab close" onClick={()=>closeSession(active)} title="Close this terminal"><X/></button>}
   </div>}
   {others.length===0&&<div className="term-switch-bar single">
+   {homeBtn}
    <span className="term-tab active">{active==='main'?'Main':active}</span>
    <button className="term-tab add" onClick={newTerminal} title="Open another terminal"><Plus/> New terminal</button>
   </div>}
-  {import.meta.env.VITE_THEME==='minimal'
+  {IS_OMARCHY
    ? <MinimalTerminalPTY key={active} sessionId={active} cwd={active===(initialSessionId||'main')?cwd:undefined} pendingCommand={active===(initialSessionId||'main')?pendingCommand:undefined}/>
    : <TerminalPTY key={active} sessionId={active} cwd={active===(initialSessionId||'main')?cwd:undefined} pendingCommand={active===(initialSessionId||'main')?pendingCommand:undefined}/>}
  </div>;
