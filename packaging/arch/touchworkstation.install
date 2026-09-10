@@ -68,6 +68,15 @@ post_upgrade() {
   # fields, new routes — just never took effect no matter how many times
   # you reinstalled).
   systemctl daemon-reload
+  systemctl stop touchworkstation 2>/dev/null || true
+  # Belt-and-suspenders: if anything else (a manual `node server/index.js`,
+  # an old crashed run that never fully exited) is squatting on the port,
+  # the freshly-restarted service fails on EADDRINUSE and systemd just
+  # crash-loops it forever — the upgrade "worked" but silently never took
+  # effect no matter how many times it's reinstalled, because the running
+  # process was never actually replaced. The .deb installer already guards
+  # against this; the Arch package never did.
+  fuser -k 8787/tcp 2>/dev/null || true
   if ! systemctl restart touchworkstation; then
     echo "WARNING: TouchWorkstation did not restart automatically — run: sudo systemctl restart touchworkstation" >&2
   fi
