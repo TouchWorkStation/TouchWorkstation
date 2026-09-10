@@ -59,6 +59,15 @@ prepare() {
 
 build() {
   cd "$pkgname"
+  # Freeze the exact commit into build-info.json BEFORE running vite — both
+  # the built JS bundle and the server read it at runtime to display which
+  # build is deployed (and warn if the browser's cached JS is a stale
+  # bundle). Without this, "did my new code actually get built and served?"
+  # is a question with no observable answer, and every debug session has to
+  # infer it from behavior.
+  local sha
+  sha="$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
+  printf '{"sha":"%s","builtAt":"%s"}\n' "$sha" "$(date -u +%FT%TZ)" > build-info.json
   VITE_THEME=minimal npm run build
 }
 
