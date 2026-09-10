@@ -206,9 +206,10 @@ export default function TerminalPTY({ sessionId = 'main', cwd, pendingCommand })
     burstTimer.current = setTimeout(refreshPane, 250);
   }
 
+  // Blank Enter is valid and common (dismissing a prompt, paging through
+  // less, or just a blank line) — never swallow it.
   function send() {
     const t = input;
-    if (!t) return;
     setInput('');
     sendRaw(t + '\r');
   }

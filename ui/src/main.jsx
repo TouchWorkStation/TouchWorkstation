@@ -10,6 +10,7 @@ import {
   Sparkles,Cpu as CpuIcon,Zap,Circle,PauseCircle,PlayCircle,Share,Box
 } from 'lucide-react';
 import TerminalPTY from './TerminalPTY.jsx';
+import MinimalTerminalPTY from './MinimalTerminalPTY.jsx';
 import MinimalDashboard from './MinimalDashboard.jsx';
 import { AppsV2, WebviewApp, useAppLauncher, ModeChooserSheet, ICONS } from './AppsV2.jsx';
 import { HomeTileSettings, buildTileCatalog, resolveHomeTiles, DEFAULT_HOME_TILES } from './HomeTiles.jsx';
@@ -577,7 +578,9 @@ function TerminalScreen({initialSessionId,cwd,pendingCommand}){
    <span className="term-tab active">{active==='main'?'Main':active}</span>
    <button className="term-tab add" onClick={newTerminal} title="Open another terminal"><Plus/> New terminal</button>
   </div>}
-  <TerminalPTY key={active} sessionId={active} cwd={active===(initialSessionId||'main')?cwd:undefined} pendingCommand={active===(initialSessionId||'main')?pendingCommand:undefined}/>
+  {import.meta.env.VITE_THEME==='minimal'
+   ? <MinimalTerminalPTY key={active} sessionId={active} cwd={active===(initialSessionId||'main')?cwd:undefined} pendingCommand={active===(initialSessionId||'main')?pendingCommand:undefined}/>
+   : <TerminalPTY key={active} sessionId={active} cwd={active===(initialSessionId||'main')?cwd:undefined} pendingCommand={active===(initialSessionId||'main')?pendingCommand:undefined}/>}
  </div>;
 }
 
