@@ -496,6 +496,8 @@ html[data-theme="solar"] body{background:#1a1206}
 .terminal-bare .term-tab.active{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.35);color:#fff}
 .terminal-bare .term-tab.add{color:#7ee787;border-style:dashed}
 .terminal-bare .term-tab.close{color:#e77}
+.terminal-bare .term-tab.home{padding:8px 10px;color:#eee}
+.terminal-bare .term-tab.home svg{width:15px;height:15px}
 .mt-root{flex:1;min-height:0;display:flex;flex-direction:column;position:relative;overflow:hidden;background:#000}
 .mt-pane{flex:1;min-height:0;margin:0;padding:16px 16px 8px;overflow-y:auto;-webkit-overflow-scrolling:touch;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:#d6d6d6;white-space:pre-wrap;word-break:break-word;user-select:text;-webkit-user-select:text}
 .mt-prompt-row{display:flex;align-items:center;gap:10px;padding:6px 16px 10px;flex:none;border-top:1px solid rgba(255,255,255,.08)}
@@ -509,3 +511,34 @@ html[data-theme="solar"] body{background:#1a1206}
 .mt-paste-fallback{display:flex;align-items:center;gap:8px;padding:8px 16px;background:#000;border-top:1px solid rgba(255,255,255,.1);flex:none}
 .mt-paste-fallback input{flex:1;border:0;background:transparent;outline:none;color:#fff;font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace}
 .mt-paste-fallback button{border:0;background:transparent;color:#7ee787;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;padding:4px 6px}
+
+/* ===== Omarchy/Arch build: whole-app skin =====
+   `.omarchy-build` is added to <html> by main.jsx only when built with
+   VITE_THEME=minimal, so this reaches every screen a fresh install actually
+   shows first — splash, login, first-run password change, the setup wizard
+   — with the same black/monospace/single-accent look as the home screen and
+   terminal above, instead of TouchWorkstation's own aubergine brand. Every
+   other distro's build never gets this class, so nothing here affects it. */
+html.omarchy-build,html.omarchy-build body,html.omarchy-build #root{background:#000}
+.omarchy-build{font-family:ui-monospace,SFMono-Regular,'JetBrains Mono',Menlo,Consolas,monospace}
+.omarchy-build .kicker{color:#7ee787;opacity:.9}
+.omarchy-build .tw-mark{background:#000;border:1px solid rgba(255,255,255,.28);box-shadow:none;color:#7ee787}
+.omarchy-build .brand strong span{color:#7ee787}
+.omarchy-build .brand small{color:#888}
+.omarchy-build .splash h1{color:#fff}
+.omarchy-build .splash p{color:#999}
+.omarchy-build .auth-card,.omarchy-build .setup-shell{background:#0a0a0a;border:1px solid rgba(255,255,255,.16);box-shadow:none;border-radius:10px}
+.omarchy-build .auth-card input{background:#000;border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;font-family:inherit}
+.omarchy-build .auth-card input::placeholder{color:#666}
+.omarchy-build .btn{border-radius:6px}
+.omarchy-build .btn.primary{background:#7ee787;border-color:transparent;box-shadow:none;color:#04170a;font-weight:700}
+.omarchy-build .btn.primary:active{filter:brightness(.92)}
+.omarchy-build button:focus-visible,.omarchy-build input:focus-visible{outline-color:rgba(126,231,135,.85)}
+.omarchy-build .progress i.on{background:#7ee787}
+.omarchy-build .choice{background:#050505;border-color:rgba(255,255,255,.16);border-radius:8px}
+.omarchy-build .choice.active{border-color:#7ee787;background:rgba(126,231,135,.08);box-shadow:inset 3px 0 #7ee787}
+.omarchy-build .choice-radio{border-color:rgba(255,255,255,.22)}
+.omarchy-build .ready-grid>div{background:#050505;border-color:rgba(255,255,255,.16)}
+.omarchy-build .ready-grid svg{color:#7ee787}
+.omarchy-build .setup-note{background:#050505;color:#bbb}
+.omarchy-build .inline-error{background:rgba(239,101,114,.08)}
