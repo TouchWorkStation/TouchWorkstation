@@ -11,7 +11,7 @@
 // happens on an inline prompt line and Enter submits, the way an actual
 // terminal emulator works, not a web form sitting below one.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from './main.jsx';
 
 const CONTROL_KEYS = [
@@ -88,6 +88,21 @@ export default function MinimalTerminalPTY({ sessionId = 'main', cwd, pendingCom
       const vv = window.visualViewport;
       document.documentElement.style.setProperty('--tw-vvh', `${vv?.height || window.innerHeight}px`);
       document.documentElement.style.setProperty('--tw-vv-top', `${vv?.offsetTop || 0}px`);
+      // The keyboard opening/closing resizes .mt-pane (it's flex:1 inside
+      // the now-shorter/taller fixed container) without moving its own
+      // scrollTop, so whatever used to sit at the old bottom edge silently
+      // scrolls out of the now-smaller visible window — the exact "latest
+      // text isn't showing, have to scroll to find it" bug. Opening the
+      // keyboard is a deliberate "I'm about to type" action, so re-pin to
+      // the bottom on every viewport change regardless of where the user
+      // had scrolled to, and keep following on the polls after it too.
+      // rAF, not immediate: the CSS var write above needs a layout pass
+      // before scrollHeight/clientHeight reflect the new size.
+      autoScrollRef.current = true;
+      requestAnimationFrame(() => {
+        const el = bodyRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
     };
     setVVH();
     window.addEventListener('resize', setVVH);
@@ -108,7 +123,10 @@ export default function MinimalTerminalPTY({ sessionId = 'main', cwd, pendingCom
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  useEffect(() => {
+  // useLayoutEffect, not useEffect: runs before the browser paints, so the
+  // pane never flashes at the old scroll position for a frame after new
+  // content lands.
+  useLayoutEffect(() => {
     const el = bodyRef.current;
     if (el && autoScrollRef.current) el.scrollTop = el.scrollHeight;
   }, [paneText]);
