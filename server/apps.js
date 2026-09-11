@@ -207,7 +207,6 @@ export const APP_REGISTRY = [
     command: 'claude',
     installCommand: 'npm install -g @anthropic-ai/claude-code',
     description: 'Open Claude Code in this project\u2019s terminal.',
-    underConstruction: true, // not working in this build yet
   },
   {
     id: 'codex',

@@ -38,9 +38,8 @@ export const RUNTIMES = {
     loginCommand: 'claude setup-token',
     installCommand: 'npm install -g @anthropic-ai/claude-code',
     supportsModels: true,
-    models: ['claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5'],
+    models: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'],
     docs: 'Anthropic Claude Code CLI',
-    underConstruction: true, // not working in this build yet — flagged in the UI rather than left silently broken
   },
   hermes: {
     label: 'Hermes',
