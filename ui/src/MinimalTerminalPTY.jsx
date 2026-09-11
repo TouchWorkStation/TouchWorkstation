@@ -44,10 +44,26 @@ export default function MinimalTerminalPTY({ sessionId = 'main', cwd, pendingCom
   const [pasteFallback, setPasteFallback] = useState(false);
   const [pasteText, setPasteText] = useState('');
 
+  // tmux's capture-pane -e returns text with the terminal's raw ANSI escape
+  // sequences embedded (colors, cursor moves, hyperlinks, title-set OSCs).
+  // The standard TerminalPTY parses SGR codes into styled spans; this
+  // minimal terminal deliberately doesn't do that (part of the "text-message
+  // box" look), so instead strip every escape sequence to plain text.
+  // Without this, running any tool with color output (ls, git status, htop)
+  // fills the pane with garbage like `[38;5;220m`.
+  function stripAnsi(s) {
+    return (s || '')
+      .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')  // CSI (colors, cursor, etc.)
+      .replace(/\x1b\][^\x07]*(\x07|\x1b\\)/g, '') // OSC (title, hyperlinks)
+      .replace(/\x1b[PX^_][^\x1b]*\x1b\\/g, '')    // DCS/SOS/PM/APC strings
+      .replace(/\x1b[()][0-9A-Za-z]/g, '')          // Charset selection
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ''); // stray controls
+  }
+
   async function refreshPane() {
     try {
       const r = await api(`/terminal/sessions/${sessionId}/history`);
-      setPaneText(r.text || '');
+      setPaneText(stripAnsi(r.text || ''));
     } catch { /* transient */ }
   }
 
