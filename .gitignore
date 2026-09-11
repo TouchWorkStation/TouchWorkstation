@@ -3,3 +3,7 @@ dist/
 *.log
 .DS_Store
 .env
+# Written fresh by release.sh at the tagged commit's SHA, and by the Arch
+# PKGBUILD's build() at makepkg time — never a tracked source file, since
+# committing it would immediately make its own recorded SHA stale.
+build-info.json
