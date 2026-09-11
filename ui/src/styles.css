@@ -530,6 +530,26 @@ html[data-theme="solar"] body{background:#1a1206}
 .update-cmd span{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-bottom:4px}
 .update-cmd code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:#d3ccd6;word-break:break-all;user-select:all;-webkit-user-select:all}
 
+/* Settings > Wallpaper row + picker modal */
+.wp-setting-row{display:flex;align-items:center;gap:12px}
+.wp-thumb{width:44px;height:78px;border-radius:8px;object-fit:cover;background:rgba(255,255,255,.05);border:1px solid var(--line2)}
+.wp-backdrop{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:20px}
+.wp-sheet{width:min(340px,100%);background:#151218;border:1px solid var(--line2);border-radius:22px;padding:20px;box-shadow:var(--shadow)}
+.wp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.wp-head strong{font-size:16px}
+.wp-x{width:30px;height:30px;border:1px solid var(--line2);background:rgba(255,255,255,.05);border-radius:9px;color:#c6bec9;display:grid;place-items:center}
+.wp-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;padding:18px 6px}
+.wp-empty svg{width:34px;height:34px;color:var(--muted)}
+.wp-empty p{margin:0;font-size:13px;color:var(--muted);line-height:1.5}
+.wp-remove-link{border:0;background:transparent;color:#e77;font-size:12px;padding:4px}
+.wp-frame{position:relative;width:240px;height:420px;margin:0 auto;overflow:hidden;border-radius:16px;border:1px solid var(--line2);touch-action:none;background:#000;cursor:grab}
+.wp-frame:active{cursor:grabbing}
+.wp-img{position:absolute;top:50%;left:50%;width:100%;height:100%;object-fit:cover;pointer-events:none;user-select:none}
+.wp-zoom{display:flex;align-items:center;gap:10px;margin:14px 4px 0;color:var(--muted)}
+.wp-zoom svg{width:18px;height:18px;flex:none}
+.wp-zoom input{flex:1}
+.wp-actions{display:flex;justify-content:space-between;gap:8px;margin-top:16px}
+
 /* ===== Omarchy/Arch build: whole-app skin =====
    `.omarchy-build` is added to <html> by main.jsx only when built with
    VITE_THEME=minimal, so this reaches every screen a fresh install actually

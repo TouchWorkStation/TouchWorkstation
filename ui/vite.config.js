@@ -41,7 +41,13 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/api': 'http://127.0.0.1:8787',
-      '/ws': { target: 'ws://127.0.0.1:8787', ws: true }
+      '/ws': { target: 'ws://127.0.0.1:8787', ws: true },
+      // Served by the backend (STATE_DIR, not a static ui/public asset —
+      // see server/index.js) so it survives rebuilds and can be replaced by
+      // an upload at any time. Without this, vite's dev server has no idea
+      // the path exists and falls back to serving index.html for it, the
+      // way it does for any other unmatched SPA route.
+      '/wallpaper.jpg': 'http://127.0.0.1:8787'
     }
   }
 });

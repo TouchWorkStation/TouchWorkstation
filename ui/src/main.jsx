@@ -7,7 +7,7 @@ import {
   ArrowLeft,ChevronDown,Copy,Globe2,PanelLeft,Command,Plus,Send,FileText,GitCommit,
   RotateCcw,Maximize2,Activity,Clock3,Server,Cloud,LockKeyhole,SlidersHorizontal,
   LayoutGrid,House,PlugZap,Network,Info,Check,AlertTriangle,X,Eye,Menu,Trash2,LogIn,Loader,
-  Sparkles,Cpu as CpuIcon,Zap,Circle,PauseCircle,PlayCircle,Share,Box
+  Sparkles,Cpu as CpuIcon,Zap,Circle,PauseCircle,PlayCircle,Share,Box,Image as ImageIcon
 } from 'lucide-react';
 import TerminalPTY from './TerminalPTY.jsx';
 import MinimalTerminalPTY from './MinimalTerminalPTY.jsx';
@@ -16,6 +16,7 @@ import { AppsV2, WebviewApp, useAppLauncher, ModeChooserSheet, ICONS } from './A
 import { HomeTileSettings, buildTileCatalog, resolveHomeTiles, DEFAULT_HOME_TILES } from './HomeTiles.jsx';
 import { AgentDetail } from './AgentDetail.jsx';
 import { RemoteAccess } from './RemoteAccess.jsx';
+import { WallpaperPicker } from './WallpaperPicker.jsx';
 import { DockerView } from './DockerView.jsx';
 import './styles.css';
 
@@ -623,10 +624,10 @@ function TerminalScreen({go,omarchy,initialSessionId,cwd,pendingCommand}){
 function Files(){const[data,setData]=useState(null),[err,setErr]=useState('');async function load(p=''){try{setData(await api('/files'+(p?`?path=${encodeURIComponent(p)}`:'')));setErr('')}catch(e){setErr(e.message)}}useEffect(()=>{load()},[]);return <div className="page-pad"><PageTitle kicker="FILES" title="Your files" body="Browse the home folder without squeezing a desktop file manager onto your phone."/><div className="file-toolbar">{data?.parent&&<Button onClick={()=>load(data.parent)}><ArrowLeft/> Up</Button>}<code>{shortPath(data?.path)}</code></div>{err&&<div className="inline-error">{err}</div>}<div className="file-list">{data?.entries?.map(f=><button key={f.path} className="file-row" onClick={()=>f.directory&&load(f.path)}><span className={'file-icon '+(f.directory?'folder':'')}>{f.directory?<Folder/>:<FileText/>}</span><div><strong>{f.name}</strong><small>{f.directory?'Folder':'File'}</small></div>{f.directory&&<ChevronRight/>}</button>)}</div></div>}
 
 // ------------------------------ SETTINGS -----------------------------------
-function SettingsView({settings,setSettings,go}){const[vpn,setVpn]=useState(null),[github,setGithub]=useState(null),[msg,setMsg]=useState(''),[showRA,setShowRA]=useState(false);const[me]=useLoad(()=>api('/me'),[]);const[status]=usePoll(()=>api('/status'),5000,[]);useEffect(()=>{api('/vpn/status').then(setVpn);api('/github/status').then(setGithub)},[]);
+function SettingsView({settings,setSettings,go}){const[vpn,setVpn]=useState(null),[github,setGithub]=useState(null),[msg,setMsg]=useState(''),[showRA,setShowRA]=useState(false),[showWP,setShowWP]=useState(false),[wpVersion,setWpVersion]=useState(0);const[me]=useLoad(()=>api('/me'),[]);const[status]=usePoll(()=>api('/status'),5000,[]);useEffect(()=>{api('/vpn/status').then(setVpn);api('/github/status').then(setGithub)},[]);
  const localUrl=me?.hostname?`http://${me.hostname}.local:8088`:null;
  const ipUrl=status?.ip?`http://${status.ip}:8088`:null;
- return <div className="settings page-pad">{showRA&&<RemoteAccess onClose={()=>{setShowRA(false);api('/vpn/status').then(setVpn)}}/>}<PageTitle kicker="SETTINGS" title="Keep it simple." body="Tell TouchWorkstation what you want to do. Advanced Linux details stay out of the way."/>
+ return <div className="settings page-pad">{showRA&&<RemoteAccess onClose={()=>{setShowRA(false);api('/vpn/status').then(setVpn)}}/>}{showWP&&<WallpaperPicker onClose={()=>setShowWP(false)} onSaved={()=>setWpVersion(v=>v+1)}/>}<PageTitle kicker="SETTINGS" title="Keep it simple." body="Tell TouchWorkstation what you want to do. Advanced Linux details stay out of the way."/>
  <div className="access-card">
   <div className="access-card-head"><Globe2/><div><strong>How to get back in</strong><small>Closing a terminal or this browser tab never stops TouchWorkstation \u2014 it keeps running on the machine. Come back anytime at:</small></div></div>
   {(localUrl||ipUrl)?<div className="access-urls">
@@ -640,6 +641,12 @@ function SettingsView({settings,setSettings,go}){const[vpn,setVpn]=useState(null
  <Setting icon={Bot} title="AI Agents" status="Configurable" text="Agents are configured in the Agents screen — choose a runtime, scope it to a project, and set permissions."><Button onClick={()=>setMsg('Open the Agents screen to create and launch agents.')}>Go to Agents</Button></Setting>
  <Setting icon={Palette} title="Appearance" status={themeLabel(settings?.theme)} text="Choose how TouchWorkstation feels. Your choice is saved and applied instantly."><div className="theme-picker">{[['aubergine','Aubergine','aub'],['charcoal','Charcoal','char'],['solar','Solar','sol']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.theme||'aubergine')===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,theme:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({theme:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
  <Setting icon={LayoutGrid} title="Interface" status={variantLabel(settings?.uiVariant)} text="Omarchy replaces the home screen and terminal with a full-black, keyboard-driven layout. This overrides whatever the installed build set by default."><div className="theme-picker">{[['standard','Standard','std'],['omarchy','Omarchy','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.uiVariant?settings.uiVariant:(BUILD_OMARCHY?'omarchy':'standard'))===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,uiVariant:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({uiVariant:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
+ <Setting icon={ImageIcon} title="Wallpaper" status="Omarchy home screen" text="Upload and crop a photo for the Omarchy home screen's background.">
+  <div className="wp-setting-row">
+   <img className="wp-thumb" src={`/wallpaper.jpg?v=${wpVersion}`} alt="" onError={(e)=>{e.currentTarget.style.visibility='hidden'}} onLoad={(e)=>{e.currentTarget.style.visibility='visible'}}/>
+   <Button onClick={()=>setShowWP(true)}>Change</Button>
+  </div>
+ </Setting>
  <Setting icon={Grid3X3} title="Home screen" status={`${(settings?.homeTiles&&settings.homeTiles.length)||4} tiles`} text="Choose which shortcuts show on the home screen, and in what order."><HomeTileSettings settings={settings} setSettings={setSettings}/></Setting>
  <BuildInfo me={me}/>
  <UpdateCheck/>
