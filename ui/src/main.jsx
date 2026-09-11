@@ -652,24 +652,53 @@ function SettingsView({settings,setSettings,go}){const[vpn,setVpn]=useState(null
  <UpdateCheck/>
  {msg&&<div className="settings-message"><Info/>{msg}</div>}</div>}
 // Real update check (previous version was a hardcoded placeholder). Hits
-// GitHub, compares against the running build's SHA, and — if there's a
-// newer commit — shows the exact command to apply it, since applying it
-// automatically would require sudo + a self-restarting updater we don't
-// have yet.
+// GitHub, compares against the running build's SHA. If this install has
+// makepkg (Arch), "Build update" runs the safe, no-privilege half
+// automatically (git pull + makepkg, no -i) and polls until it's done, then
+// shows the ONE remaining command — a sudo pacman -U — for the user to run
+// by hand. That single command also triggers the service restart on its
+// own (touchworkstation.install's post_upgrade already does that). No
+// sudoers rule, no password ever seen by the app. Anywhere else, this just
+// shows the full manual command like before.
 function UpdateCheck(){
  const[busy,setBusy]=useState(false),[result,setResult]=useState(null);
+ const[building,setBuilding]=useState(false);
  async function check(){
   setBusy(true); setResult(null);
   try{setResult(await api('/update/check'))}
   catch(e){setResult({status:'error',message:e.message})}
   finally{setBusy(false)}
  }
+ async function build(){
+  setBuilding(true);
+  try{await api('/update/apply',{method:'POST',body:'{}'})}
+  catch(e){setBuilding(false);setResult(r=>({...r,buildError:e.message}));return}
+  let tries=0;
+  const poll=async()=>{
+   tries++;
+   try{
+    const s=await api('/update/apply/status');
+    if(s.status==='ready'){setBuilding(false);setResult(r=>({...r,build:s}));return}
+    if(s.status==='error'){setBuilding(false);setResult(r=>({...r,buildError:s.message}));return}
+   }catch{ /* transient — keep polling */ }
+   if(tries<90)setTimeout(poll,4000);
+   else{setBuilding(false);setResult(r=>({...r,buildError:'Still building after several minutes — check the machine directly.'}))}
+  };
+  setTimeout(poll,3000);
+ }
  const statusLabel=result?({'up-to-date':'Up to date','update-available':'Update available','error':'Check failed'}[result.status]||''):' ';
  return <Setting icon={RefreshCcw} title="Updates" status={statusLabel} text="Compares this install with the latest commit on GitHub.">
-  <Button onClick={check} disabled={busy}>{busy?'Checking…':'Check for updates'}</Button>
+  <Button onClick={check} disabled={busy||building}>{busy?'Checking…':'Check for updates'}</Button>
   {result&&<div className="update-result">
    <p>{result.message}</p>
-   {result.status==='update-available'&&result.installCommand&&<div className="update-cmd">
+   {result.status==='update-available'&&!result.build&&result.canAutoBuild&&
+    <Button className="primary" onClick={build} disabled={building}>{building?'Building… this can take a few minutes':'Build update'}</Button>}
+   {result.buildError&&<div className="inline-error">{result.buildError}</div>}
+   {result.build?.status==='ready'&&<div className="update-cmd">
+    <span>Build ready — run this on the machine to install it (this also restarts the service):</span>
+    <code>{result.build.command}</code>
+   </div>}
+   {result.status==='update-available'&&!result.build&&(!result.canAutoBuild)&&result.installCommand&&<div className="update-cmd">
     <span>Run on this machine to apply:</span>
     <code>{result.installCommand}</code>
    </div>}
