@@ -548,12 +548,30 @@ app.post('/api/vpn/up',auth,async(req,res)=>{
     res.json({needsTerminal:true,command:'sudo tailscale up',message:'Run this in Terminal to sign in, then return here.'});
   }
 });
+// Arch-only auto-build support: no sudo, no sudoers file, nothing added to
+// the packaging scripts. Detected by whether `makepkg` exists on PATH
+// rather than an env var the installer would need to set — keeps this
+// entirely self-contained in the app.
+let hasMakepkg=null;
+function makepkgAvailable(){
+  if(hasMakepkg===null){
+    try{execSync('command -v makepkg',{stdio:'ignore',env:{...process.env,PATH:twPath()},shell:'/bin/bash'});hasMakepkg=true}
+    catch{hasMakepkg=false}
+  }
+  return hasMakepkg;
+}
+// Dedicated clone this feature owns end-to-end, independent of wherever the
+// user may have manually cloned the repo for other purposes (e.g. ~/tws) —
+// the server has no way to know that path, and re-guessing it is fragile.
+const UPDATE_SRC_DIR=path.join(STATE_DIR,'update-src');
+// idle | building | ready | error. `ready` carries the one command left to
+// run by hand (a sudo pacman -U — deliberately NOT run by the app itself;
+// see /api/update/apply's comment for why).
+let updateBuild={status:'idle'};
+
 // Check GitHub for a newer commit on master than what this server was
-// built from. Doesn't try to *apply* the update — self-updating a running
-// systemd service reliably needs sudo, a separate updater script, and
-// crash-recovery paths that don't belong in a REST handler — but it tells
-// the user honestly whether an update exists and hands them the exact
-// commands to apply it, instead of the previous hardcoded "coming soon".
+// built from, and tell the client whether this install can auto-build it
+// (Arch, via makepkg) or only show the manual command.
 app.get('/api/update/check',auth,async(req,res)=>{
   try{
     const r=await fetch('https://api.github.com/repos/TouchWorkStation/TouchWorkstation/commits/master',{headers:{'Accept':'application/vnd.github+json','User-Agent':'touchworkstation-update-check'}});
@@ -566,6 +584,7 @@ app.get('/api/update/check',auth,async(req,res)=>{
       status:upToDate?'up-to-date':'update-available',
       running,
       latest:latest||'unknown',
+      canAutoBuild:makepkgAvailable(),
       // The install command matches the Arch package's install flow (see
       // packaging/arch/PKGBUILD's -git source URL). Keeping it in one
       // place — here — means the UI never has to know packaging details.
@@ -578,6 +597,57 @@ app.get('/api/update/check',auth,async(req,res)=>{
     res.json({status:'error',message:`Could not reach GitHub: ${e.message}`});
   }
 });
+
+// Build the update — git pull/clone + `makepkg` (no -i). This needs no
+// privilege at all: makepkg refuses to even run as root, and building
+// without -i never touches pacman. The actual install (`sudo pacman -U`)
+// stays a manual step the user runs themselves in their own terminal — the
+// app never sees a sudo password and no sudoers rule is needed anywhere.
+// Runs in the foreground (not detached): unlike a full -si install, this
+// never restarts the service, so there's nothing that would kill this
+// request handler mid-flight — it's just slow (npm install + vite build
+// can take a couple of minutes), so the client polls
+// /api/update/apply/status instead of waiting on this response.
+app.post('/api/update/apply',auth,(req,res)=>{
+  if(!makepkgAvailable()){
+    return res.status(400).json({error:'Auto-build needs makepkg, which isn’t available on this install. Use the command from "Check for updates" in a terminal instead.'});
+  }
+  if(updateBuild.status==='building'){
+    return res.status(409).json({error:'A build is already running.'});
+  }
+  updateBuild={status:'building',startedAt:new Date().toISOString()};
+  res.json({status:'started'});
+  const src=UPDATE_SRC_DIR;
+  const archDir=path.join(src,'packaging','arch');
+  // Reset --hard rather than a plain pull: this clone is dedicated to this
+  // feature and nothing else touches it, but makepkg's own pkgver() step
+  // writes a version bump into PKGBUILD in place on every build, which
+  // would otherwise conflict with the next pull.
+  const script=[
+    `set -e`,
+    `if [ -d ${JSON.stringify(src)}/.git ]; then cd ${JSON.stringify(src)} && git fetch origin master && git reset --hard origin/master; `+
+    `else rm -rf ${JSON.stringify(src)} && git clone https://github.com/TouchWorkStation/TouchWorkstation.git ${JSON.stringify(src)}; fi`,
+    `cd ${JSON.stringify(archDir)}`,
+    `makepkg --noconfirm --needed`,
+  ].join(' && ');
+  const child=spawn('bash',['-lc',script],{cwd:HOME,env:{...process.env,PATH:twPath()}});
+  let out='';
+  child.stdout?.on('data',(d)=>{out+=d});
+  child.stderr?.on('data',(d)=>{out+=d});
+  child.on('error',(e)=>{updateBuild={status:'error',message:e.message}});
+  child.on('close',(code)=>{
+    if(code!==0){updateBuild={status:'error',message:'Build failed:\n'+out.slice(-2000)};return}
+    try{
+      const files=fs.readdirSync(archDir).filter((f)=>f.endsWith('.pkg.tar.zst')&&!f.includes('-debug-'));
+      if(!files.length){updateBuild={status:'error',message:'Build finished but no package file was produced.'};return}
+      const pkgFile=path.join(archDir,files[0]);
+      updateBuild={status:'ready',command:`sudo pacman -U ${JSON.stringify(pkgFile)}`,readyAt:new Date().toISOString()};
+    }catch(e){
+      updateBuild={status:'error',message:e.message};
+    }
+  });
+});
+app.get('/api/update/apply/status',auth,(req,res)=>{res.json(updateBuild)});
 
 // Preview reverse proxy: /preview/:port/* -> local dev server, served from
 // the SAME origin as TouchWorkstation so it's reachable from any device
