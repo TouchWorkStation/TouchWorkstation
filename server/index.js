@@ -18,7 +18,11 @@ import {mountDockerRoutes} from './docker-routes.js';
 const sh=promisify(exec);
 const app=express();
 app.set('trust proxy','loopback');
-app.use(express.json({limit:'5mb'}));
+// 12mb to fit a base64-encoded wallpaper upload (see /api/wallpaper) — a
+// route-specific limit would be pointless here, since this global parser
+// runs first on every request and a stricter one downstream never gets the
+// chance to override an already-rejected oversized body.
+app.use(express.json({limit:'12mb'}));
 const PORT=Number(process.env.PORT||8787);
 const HOME=process.env.TW_HOME||os.homedir();
 
@@ -445,6 +449,52 @@ app.post('/api/settings',auth,(req,res)=>{
   }
   saveConfig(c);
   res.json({ok:true,theme:c.theme,homeTiles:c.homeTiles,uiVariant:c.uiVariant});
+});
+
+// ---- wallpaper (Omarchy home-screen background) ----
+// Stored in STATE_DIR, not ui/public — that directory is a build-time Vite
+// asset folder that `emptyOutDir` wipes on every rebuild/update, which would
+// silently delete a user's uploaded photo the next time the app updates.
+// STATE_DIR survives rebuilds and is already writable by the app's own user
+// with no special permissions (same place agents.json/config.json live).
+const WALLPAPER_FILE=path.join(STATE_DIR,'wallpaper.jpg');
+// Upload payload is a client-cropped JPEG data URL, not a raw multipart
+// file — the crop happens in the browser (canvas), so the server only ever
+// receives an already-sized, already-JPEG image. That sidesteps needing a
+// multipart-parsing dependency (multer etc.) for what's fundamentally a
+// small, fixed-format upload, keeping the dependency list unchanged.
+app.post('/api/wallpaper',auth,(req,res)=>{
+  const dataUrl=String(req.body?.image||'');
+  const m=dataUrl.match(/^data:image\/(jpeg|jpg|png|webp);base64,(.+)$/);
+  if(!m)return res.status(400).json({error:'Expected a base64 image data URL'});
+  try{
+    const buf=Buffer.from(m[2],'base64');
+    if(buf.length>10*1024*1024)return res.status(400).json({error:'Image too large after decoding (max 10MB)'});
+    fs.mkdirSync(STATE_DIR,{recursive:true});
+    fs.writeFileSync(WALLPAPER_FILE,buf);
+    res.json({ok:true});
+  }catch(e){res.status(500).json({error:'Could not save wallpaper: '+e.message})}
+});
+app.delete('/api/wallpaper',auth,(req,res)=>{
+  try{fs.unlinkSync(WALLPAPER_FILE)}catch{ /* already gone, or never set — either way the goal state is reached */ }
+  res.json({ok:true});
+});
+// Served separately from the static dist/ bundle for the same reason it's
+// stored outside ui/public — this file lives in STATE_DIR and can change at
+// any time a user uploads a new one, independent of any build. `no-store`
+// keeps the browser from caching a stale photo after a re-upload — unlike
+// the content-hashed /assets/ files, this URL never changes even though its
+// content does.
+app.get('/wallpaper.jpg',auth,(req,res)=>{
+  res.set('Cache-Control','no-store');
+  if(!fs.existsSync(WALLPAPER_FILE))return res.status(404).end();
+  // sendFile's `dotfiles` option defaults to 'ignore' — it treats ANY path
+  // segment starting with "." as a hidden file and silently 404s rather
+  // than serving it, which is exactly STATE_DIR (.local/share/...). Safe to
+  // allow here specifically because WALLPAPER_FILE is a hardcoded constant,
+  // never influenced by request input — there's no path-traversal surface
+  // to protect against for this one fixed path.
+  res.sendFile(WALLPAPER_FILE,{dotfiles:'allow'});
 });
 function classifyConnection(req){
   const host=(req.hostname||'').toLowerCase();
