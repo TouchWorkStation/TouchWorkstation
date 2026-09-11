@@ -107,7 +107,7 @@ TW_STATE_DIR=$APP_HOME/.local/share/touchworkstation
 TW_ENV_FILE=$ENV_FILE
 HOME=$APP_HOME
 ENV
-chown root:"$APP_GROUP" "$ENV_FILE"; chmod 640 "$ENV_FILE"
+chown root:"$APP_GROUP" "$ENV_FILE"; chmod 660 "$ENV_FILE"
 mkdir -p "$APP_HOME/.local/share/touchworkstation"
 chown -R "$APP_USER:$APP_GROUP" "$APP_HOME/.local" "$STATE" "$APP_HOME/TouchWorkstation" "$APP"
 
@@ -138,6 +138,12 @@ NGINX
 nginx -t
 
 systemctl daemon-reload
+systemctl stop touchworkstation 2>/dev/null || true
+# If anything else is squatting on 8787 (a stray manual `node server/index.js`,
+# a run that never fully exited), the freshly-restarted service just
+# crash-loops on EADDRINUSE forever and the upgrade "worked" but silently
+# never took effect. Matches the .deb postinst's existing guard.
+fuser -k 8787/tcp 2>/dev/null || true
 systemctl enable --now touchworkstation nginx
 systemctl restart touchworkstation nginx
 

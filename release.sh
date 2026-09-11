@@ -40,6 +40,19 @@ git commit -m "Release $TAG" || echo "   (nothing new to commit)"
 git tag -f "$TAG"
 git push origin HEAD --follow-tags -f
 
+# The .deb and .rpm packages both strip .git before packaging (below) and
+# then rebuild the app A SECOND TIME on the target machine at install time
+# (postinst/%post) — the only place their build actually happens, since this
+# machine's build in step 2 gets overwritten by that later rebuild anyway.
+# Neither has a .git dir to read its own commit from at that point, so
+# without this, Settings > Build would show "unknown" on every .deb/.rpm
+# install. Written to the repo root now, after tagging (so it's the tag's
+# real SHA, not stale), never committed (see .gitignore) — cp -a below
+# carries it into both packages, surviving the .git removal, in place for
+# when the target machine's own npm run build reads it.
+GIT_SHA="$(git rev-parse --short=12 HEAD)"
+printf '{"sha":"%s","builtAt":"%s"}\n' "$GIT_SHA" "$(date -u +%FT%TZ)" > build-info.json
+
 # ---------------------------------------------------------------------------
 # 2. Build the app once — every package below reuses this same dist/.
 # ---------------------------------------------------------------------------
