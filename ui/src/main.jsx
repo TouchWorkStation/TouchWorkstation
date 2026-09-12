@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import TerminalPTY from './TerminalPTY.jsx';
 import MinimalTerminalPTY from './MinimalTerminalPTY.jsx';
-import MinimalDashboard from './MinimalDashboard.jsx';
+import MinimalDashboard, { NAV as MINIMAL_NAV } from './MinimalDashboard.jsx';
 import { AppsV2, WebviewApp, useAppLauncher, ModeChooserSheet, ICONS } from './AppsV2.jsx';
 import { HomeTileSettings, buildTileCatalog, resolveHomeTiles, DEFAULT_HOME_TILES } from './HomeTiles.jsx';
 import { AgentDetail } from './AgentDetail.jsx';
@@ -184,13 +184,21 @@ function Shell({me,settings,setSettings,omarchy}){
  return <div className={'shell '+(mobile?'is-mobile':'is-desktop')}>
  {!mobile&&!bare&&<aside className="sidebar"><Brand/><nav>{NAV.map(([id,Icon,label])=><button key={id} className={view===id&&!project?'active':''} onClick={()=>go(id)}><Icon/><span>{label}</span></button>)}</nav><div className="sidebar-bottom"><div className="machine-chip"><Dot/><div><strong>{me.hostname}</strong><small>Connected</small></div></div><span className="version">{me.version}</span></div></aside>}
  <main className={'main'+(bare?' main-bare':'')}>{!bare&&<Topbar me={me} mobile={mobile} view={view} project={project} onMenu={()=>setMobileMenu(!mobileMenu)} go={go}/>}<div className={'view'+(transitioning?' view-transition':'')+(bare?' view-bare':'')}><Router view={view} go={go} openProject={openProject} openWebview={openWebview} openAgent={openAgent} navState={navState} me={me} project={project} setProject={setProject} settings={settings} setSettings={setSettings} omarchy={omarchy}/></div></main>
- {mobile&&!bare&&<MobileDock view={view} project={project} go={go}/>} {mobile&&mobileMenu&&<MobileSheet go={go} onClose={()=>setMobileMenu(false)}/>}</div>
+ {mobile&&!bare&&!omarchy&&<MobileDock view={view} project={project} go={go}/>} {mobile&&mobileMenu&&<MobileSheet items={omarchy?minimalNavItems:NAV} go={go} onClose={()=>setMobileMenu(false)}/>}</div>
 }
+// Omarchy's own destinations ({id,icon,label} objects) normalized to the
+// same [id,Icon,label] tuple shape the standard shell's NAV already uses,
+// so MobileSheet can render either without caring which build it's in.
+const minimalNavItems=MINIMAL_NAV.map(n=>[n.id,n.icon,n.label]);
 function Topbar({me,mobile,view,project,onMenu,go}){
  const label=project?project.name:(NAV.find(n=>n[0]===view)?.[2]||'Home');
  return <header className="topbar">{mobile?<button className="icon-btn" onClick={onMenu}><Menu/></button>:<div className="crumb">TouchWorkstation <ChevronRight/> <span>{label}</span></div>}<div className="top-status"><span><Dot/> Connected</span>{!mobile&&<Pill>{me.version}</Pill>}<button className="icon-btn" onClick={()=>go('settings')}><Settings/></button></div></header>}
 function MobileDock({view,project,go}){const items=[['home',Home,'Home'],['apps',Grid3X3,'Apps'],['projects',Code2,'Projects'],['agents',Bot,'Agents'],['terminal',TerminalSquare,'Terminal']];return <nav className="mobile-dock">{items.map(([id,Icon,label])=><button className={view===id&&!project?'active':''} key={id} onClick={()=>go(id)}><Icon/><span>{label}</span></button>)}</nav>}
-function MobileSheet({go,onClose}){return <><div className="mobile-sheet-backdrop" onClick={onClose}/><div className="mobile-sheet"><div className="sheet-handle"/>{NAV.map(([id,Icon,label])=><button key={id} onClick={()=>go(id)}><Icon/><span>{label}</span><ChevronRight/></button>)}</div></>}
+// Bottom-bar-free on Omarchy (see Shell above) — this sheet, opened from
+// the top-left hamburger, is the only mobile nav surface there, so it's
+// handed the Omarchy-specific destination list instead of the standard
+// shell's NAV in that case.
+function MobileSheet({items=NAV,go,onClose}){return <><div className="mobile-sheet-backdrop" onClick={onClose}/><div className="mobile-sheet"><div className="sheet-handle"/>{items.map(([id,Icon,label])=><button key={id} onClick={()=>go(id)}><Icon/><span>{label}</span><ChevronRight/></button>)}</div></>}
 
 function Router(p){
  if(p.project)return <DeveloperWorkspace project={p.project} go={p.go} back={()=>p.go('projects')}/>;

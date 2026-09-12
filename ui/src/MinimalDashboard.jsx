@@ -15,7 +15,11 @@ import { useEffect, useState } from 'react';
 import { Cpu, MemoryStick, HardDrive, Upload, Download, TerminalSquare, Code2, Folder, GitBranch, Box, Sparkles, Settings, Keyboard } from 'lucide-react';
 import { api, usePoll } from './main.jsx';
 
-const NAV = [
+// Exported so main.jsx's mobile nav sheet (opened from the top-left
+// hamburger — the only mobile nav surface on Omarchy now that the bottom
+// dock is hidden there) lists the same Omarchy-specific destinations as
+// this home screen, instead of the standard shell's unrelated NAV list.
+export const NAV = [
   { id: 'terminal', label: 'Terminal', icon: TerminalSquare },
   { id: 'projects', label: 'Projects', icon: Code2 },
   { id: 'files', label: 'Files', icon: Folder },
