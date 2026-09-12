@@ -8,7 +8,7 @@ import {
   ArrowLeft, Plus, Bot, Play, Trash2, Send, X, Check,
   LayoutGrid, MessageSquare,
 } from 'lucide-react';
-import { api, Button, Pill } from './main.jsx';
+import { api, Button, Pill, agentStateMeta } from './main.jsx';
 
 const COLUMN_LABELS = { todo: 'To Do', in_progress: 'In Progress', done: 'Done' };
 const COLUMN_ORDER = ['todo', 'in_progress', 'done'];
@@ -19,7 +19,14 @@ export function AgentDetail({ agentId, go, back }) {
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    api(`/agents/${agentId}`).then((r) => setAgent(r.agent)).catch((e) => setErr(e.message));
+    let alive = true;
+    const load = () => api(`/agents/${agentId}`).then((r) => { if (alive) setAgent(r.agent); }).catch((e) => { if (alive) setErr(e.message); });
+    load();
+    // Keep the status pill live while this screen is open, matching the
+    // Agents list's own 5s poll — otherwise "Needs you" would only ever
+    // reflect whatever it was the moment you opened the agent.
+    const t = setInterval(load, 6000);
+    return () => { alive = false; clearInterval(t); };
   }, [agentId]);
 
   async function launch() {
@@ -39,7 +46,9 @@ export function AgentDetail({ agentId, go, back }) {
         <Button onClick={back}><ArrowLeft/> Agents</Button>
         <div className="ad-title"><span className="ad-icon"><Bot/></span><div><strong>{agent.name}</strong><small>{agent.runtimeLabel}{agent.model ? ` · ${agent.model}` : ''}</small></div></div>
         <div className="ad-top-actions">
-          <Pill tone={agent.running ? 'success' : ''}>{agent.running ? 'Running' : agent.runtimeInstalled ? 'Ready' : 'Setup'}</Pill>
+          {(() => { const state = agent.running ? agentStateMeta(agent.state) : null; return (
+            <Pill tone={state ? state.tone : ''}>{state ? state.label : agent.runtimeInstalled ? 'Ready' : 'Setup'}</Pill>
+          ); })()}
           <Button className="primary" onClick={launch}><Play/> {agent.running ? 'Attach' : agent.runtimeInstalled ? 'Launch' : 'Install & Launch'}</Button>
         </div>
       </div>

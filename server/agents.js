@@ -326,3 +326,54 @@ export function liveSessions() {
     .filter((n) => n.startsWith('tw-agent-'))
     .map((n) => n.replace(/^tw-/, ''));
 }
+
+// ---- live status classification (Herdr-inspired) --------------------------
+// A running agent's tmux pane is classified into one of four states so the
+// list/dashboard can show which agent actually needs a human, without
+// opening each one to check. This is deliberately a coarser, cheaper check
+// than agent-board-routes.js's reply-capture mechanism (which needs
+// continuous polling + tail-diffing to extract a clean chat message) — state
+// classification only needs "as of right now", computed fresh on each
+// /api/agents request, so it doesn't need a persistent background poller.
+//
+//   blocked — the pane's last line looks like it's waiting on the human
+//             (a yes/no prompt, a question, "press enter to continue")
+//   working — pane content changed since the last time we looked
+//   done    — pane stopped changing recently (a reply likely just finished)
+//   idle    — pane has been unchanged for a while (nothing pending)
+//
+// Thresholds and patterns here are a first-pass heuristic, not a protocol —
+// expect to tune both against real usage.
+const stateCache = new Map(); // agentId -> { lastCapture, lastChangeAt }
+const BLOCKED_LINE_PATTERNS = [
+  /\?\s*$/,
+  /\(y\/n\)\s*$/i,
+  /\[y\/n\]\s*$/i,
+  /press enter to continue/i,
+  /do you want to proceed/i,
+  /waiting for (your )?(input|response|confirmation)/i,
+];
+const DONE_WINDOW_MS = 45_000; // unchanged for less than this -> "done"; longer -> "idle"
+
+function capturePaneQuick(id) {
+  try {
+    return execSync(`tmux capture-pane -t ${JSON.stringify(`tw-${id}`)} -p -S -50`, { encoding: 'utf8' });
+  } catch {
+    return null;
+  }
+}
+
+export function classifyAgentState(id) {
+  const snap = capturePaneQuick(id);
+  if (snap === null) return null; // not running, or tmux/session gone
+  const now = Date.now();
+  const prev = stateCache.get(id);
+  const changed = !prev || prev.lastCapture !== snap;
+  const lastChangeAt = changed ? now : (prev ? prev.lastChangeAt : now);
+  stateCache.set(id, { lastCapture: snap, lastChangeAt });
+
+  const lastLine = snap.trimEnd().split('\n').pop() || '';
+  if (!changed && BLOCKED_LINE_PATTERNS.some((re) => re.test(lastLine))) return 'blocked';
+  if (changed) return 'working';
+  return now - lastChangeAt < DONE_WINDOW_MS ? 'done' : 'idle';
+}

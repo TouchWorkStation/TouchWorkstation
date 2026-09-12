@@ -6,7 +6,7 @@ import fs from 'fs';
 import {
   initAgents, runtimeStatus, listAgents, getAgent, createAgent,
   updateAgent, deleteAgent, resolveLaunch, markLaunched, liveSessions,
-  resolveInstall, resolveLogin,
+  resolveInstall, resolveLogin, classifyAgentState,
 } from './agents.js';
 import { purgeAgent } from './agent-board.js';
 
@@ -18,10 +18,15 @@ export function mountAgentRoutes(app, { auth, HOME, stateDir }) {
     res.json({ runtimes: runtimeStatus() });
   });
 
-  // All configured agents, enriched with live status.
+  // All configured agents, enriched with live status. `state` is only
+  // meaningful (non-null) while `running` — see classifyAgentState's own
+  // comment in agents.js for what blocked/working/done/idle each mean.
   app.get('/api/agents', auth, (req, res) => {
     const live = new Set(liveSessions());
-    const agents = listAgents().map((a) => ({ ...a, running: live.has(a.id) }));
+    const agents = listAgents().map((a) => {
+      const running = live.has(a.id);
+      return { ...a, running, state: running ? classifyAgentState(a.id) : null };
+    });
     res.json({ agents });
   });
 
@@ -29,7 +34,8 @@ export function mountAgentRoutes(app, { auth, HOME, stateDir }) {
     const a = getAgent(req.params.id);
     if (!a) return res.status(404).json({ error: 'Agent not found' });
     const live = new Set(liveSessions());
-    res.json({ agent: { ...a, running: live.has(a.id) } });
+    const running = live.has(a.id);
+    res.json({ agent: { ...a, running, state: running ? classifyAgentState(a.id) : null } });
   });
 
   app.post('/api/agents', auth, (req, res) => {
@@ -114,8 +120,12 @@ export function mountAgentRoutes(app, { auth, HOME, stateDir }) {
     }
   });
 
-  // Live snapshot for the monitoring view.
+  // Live snapshot for the monitoring view — the client polls this every few
+  // seconds to keep running/state fresh without re-fetching the full agent
+  // list + runtimes each time.
   app.get('/api/agents/monitor/live', auth, (req, res) => {
-    res.json({ running: liveSessions() });
+    const running = liveSessions();
+    const states = Object.fromEntries(running.map((id) => [id, classifyAgentState(id)]));
+    res.json({ running, states });
   });
 }

@@ -265,6 +265,7 @@ function Dashboard({me,go,openProject,settings}){
  const ps=projects?.projects||[];
  const agentList=agents?.agents||[];
  const runningAgents=agentList.filter(a=>a.running).length;
+ const blockedAgents=agentList.filter(a=>a.state==='blocked').length;
  // Home-screen tiles are user-configurable (Settings > Home screen). ids are
  // resolved against the merged catalog and anything unknown/removed is
  // silently dropped rather than crashing the home screen — falls back to
@@ -273,7 +274,7 @@ function Dashboard({me,go,openProject,settings}){
  const tiles=resolveHomeTiles(settings?.homeTiles,catalog);
  const launcher=useAppLauncher({go,project:null});
  function openTile(t){ if(t.core)go(t.id); else launcher.open(t); }
- function tileSub(t){ if(t.id==='agents')return runningAgents?`${runningAgents} running`:'AI assistants'; return t.description||'Open'; }
+ function tileSub(t){ if(t.id==='agents')return blockedAgents?`${blockedAgents} need${blockedAgents===1?'s':''} you`:runningAgents?`${runningAgents} running`:'AI assistants'; return t.description||'Open'; }
  return <div className="dashboard page-pad">
   <section className="mobile-hero"><div className="hero-content"><span className="kicker">{greeting()} · TOUCHWORKSTATION</span><h1>{me.hostname}</h1><div className="hero-status"><span className="live-dot"><i/></span> Connected{status?<> · <b>{status.cpu}%</b> CPU · <b>{status.memory}%</b> MEM</>:''}</div></div><div className="wave"><i/><i/><i/></div></section>
   <CrashRecoveryBanner/>
@@ -307,7 +308,7 @@ function Dashboard({me,go,openProject,settings}){
 }
 function DashboardCard({title,icon:Icon,action,children}){return <section className="dash-card"><div className="card-head"><div><Icon/><h3>{title}</h3></div>{action}</div><div className="card-body">{children}</div></section>}
 function ProjectMini({p,onClick}){return <button className="mini-row" onClick={onClick}><Folder/><div><strong>{p.name}</strong><small>{shortPath(p.path)}</small></div><Pill tone={p.running?'success':''}>{p.running?`:${p.port}`:p.branch||'local'}</Pill></button>}
-function AgentMini({a,onClick}){return <button className="mini-row" onClick={onClick}><Bot/><div><strong>{a.name}</strong><small>{a.runtimeLabel}{a.model?` · ${a.model}`:''}</small></div><Pill tone={a.running?'success':''}>{a.running?'Running':a.runtimeInstalled?'Ready':'Setup'}</Pill></button>}
+function AgentMini({a,onClick}){const state=a.running?agentStateMeta(a.state):null;return <button className="mini-row" onClick={onClick}><Bot/><div><strong>{a.name}</strong><small>{a.runtimeLabel}{a.model?` · ${a.model}`:''}</small></div><Pill tone={state?state.tone:''}>{state?state.label:a.runtimeInstalled?'Ready':'Setup'}</Pill></button>}
 function RepoMini({r}){return <div className="mini-row"><GitBranch/><div><strong>{r.name||r.nameWithOwner}</strong><small>{r.nameWithOwner}</small></div>{typeof r.stars==='number'&&<span className="stars"><Star/> {r.stars}</span>}</div>}
 function ConnectMini({icon:Icon,title,sub}){return <div className="connect-mini"><Icon/><strong>{title}</strong><small>{sub}</small></div>}
 function RemoteMini(){
@@ -325,6 +326,9 @@ function MobileStat({label,value,detail}){const v=typeof value==='number'?value:
 function AccessUrl({label,url}){const[copied,setCopied]=useState(false);return <div className="access-url-row"><div><small>{label}</small><strong>{url}</strong></div><button onClick={()=>{navigator.clipboard?.writeText(url);setCopied(true);setTimeout(()=>setCopied(false),1500)}}>{copied?<Check/>:<Copy/>}</button></div>}
 function themeLabel(t){return({aubergine:'Aubergine',charcoal:'Charcoal',solar:'Solar'})[t||'aubergine']||'Aubergine'}
 function variantLabel(v){return v?(v==='omarchy'?'Omarchy':'Standard'):(BUILD_OMARCHY?'Omarchy (default)':'Standard (default)')}
+// Herdr-inspired at-a-glance agent status — see classifyAgentState in
+// server/agents.js for what each state actually means and how it's derived.
+export function agentStateMeta(state){return{blocked:{label:'Needs you',tone:'warn'},working:{label:'Working',tone:''},done:{label:'Done',tone:'success'},idle:{label:'Idle',tone:'muted'}}[state]||null}
 function greeting(){const h=new Date().getHours();return h<5?'GOOD NIGHT':h<12?'GOOD MORNING':h<18?'GOOD AFTERNOON':'GOOD EVENING'}
 function Launcher({icon:Icon,label,sub,onClick}){return <button className="launcher" onClick={onClick}><span className="launcher-icon"><Icon/></span><strong>{label}</strong><small>{sub}</small></button>}
 
@@ -501,7 +505,7 @@ function Agents({go,openAgent,navState}){
  // on Home because the field started empty.
  const[editing,setEditing]=useState(()=>navState?.workspace?'new':null);
  const load=async()=>{try{const[a,r]=await Promise.all([api('/agents'),api('/agents/runtimes')]);setAgents(a.agents||[]);setRuntimes(r.runtimes||[])}catch(e){setMsg(e.message);setAgents([])}};
- useEffect(()=>{load();const t=setInterval(()=>{api('/agents/monitor/live').then(live=>{setAgents(cur=>cur?cur.map(a=>({...a,running:live.running.includes(a.id)})):cur)}).catch(()=>{})},5000);return()=>clearInterval(t)},[]);
+ useEffect(()=>{load();const t=setInterval(()=>{api('/agents/monitor/live').then(live=>{setAgents(cur=>cur?cur.map(a=>({...a,running:live.running.includes(a.id),state:live.states?.[a.id]??null})):cur)}).catch(()=>{})},5000);return()=>clearInterval(t)},[]);
  async function launch(a){setMsg('');try{const r=await api(`/agents/${a.id}/launch`,{method:'POST',body:'{}'});go('terminal',{pendingCommand:r.command,cwd:r.cwd,sessionId:r.sessionId})}catch(e){setMsg(e.message)}}
  async function remove(a){if(!confirm(`Delete agent "${a.name}"? This also removes its board and chat.`))return;try{await api(`/agents/${a.id}`,{method:'DELETE'});load()}catch(e){setMsg(e.message)}}
  // Install a runtime (e.g. Hermes) — runs the official installer in a visible terminal.
@@ -519,8 +523,9 @@ function Agents({go,openAgent,navState}){
 }
 function AgentCard({a,onOpen,onLaunch,onEdit,onDelete}){
  const perms=Object.entries(a.permissions||{}).filter(([,v])=>v).length;
+ const state=a.running?agentStateMeta(a.state):null;
  return <div className={'agent-harness-card'+(a.running?' running':'')}>
-  <button className="ahc-top ahc-open" onClick={onOpen}><span className="ahc-icon"><Bot/></span><div className="ahc-id"><strong>{a.name}</strong><small>{a.runtimeLabel}{a.model?` · ${a.model}`:''}</small></div><Pill tone={a.running?'success':a.runtimeUnderConstruction?'warn':''}>{a.runtimeUnderConstruction?'Under construction':a.running?<><Dot/> Running</>:a.runtimeInstalled?'Ready':'Setup'}</Pill></button>
+  <button className="ahc-top ahc-open" onClick={onOpen}><span className="ahc-icon"><Bot/></span><div className="ahc-id"><strong>{a.name}</strong><small>{a.runtimeLabel}{a.model?` · ${a.model}`:''}</small></div><Pill tone={state?state.tone:a.runtimeUnderConstruction?'warn':''}>{a.runtimeUnderConstruction?'Under construction':state?<><Dot tone={state.tone==='warn'?'warn':'ok'}/> {state.label}</>:a.runtimeInstalled?'Ready':'Setup'}</Pill></button>
   <div className="ahc-meta">{a.workspace?<span><Folder/> {shortPath(a.workspace)}</span>:<span><Folder/> Home</span>}<span><LockKeyhole/> {perms} permission{perms===1?'':'s'}</span><span><Clock3/> {fmtWhen(a.lastRunAt)}</span></div>
   <div className="ahc-actions"><Button className="primary" onClick={onOpen}><LayoutGrid/> Open</Button><Button onClick={onLaunch} disabled={a.runtimeUnderConstruction}><Play/> {a.runtimeUnderConstruction?'Unavailable':a.running?'Attach':a.runtimeInstalled?'Launch':'Install & Launch'}</Button><button className="ahc-del" onClick={onEdit} title="Configure"><SlidersHorizontal/></button><button className="ahc-del" onClick={onDelete} title="Delete"><Trash2/></button></div>
  </div>
