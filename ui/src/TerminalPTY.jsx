@@ -260,6 +260,15 @@ export default function TerminalPTY({ sessionId = 'main', cwd, pendingCommand })
     setPasteFallback(false);
   }
 
+  // Native text selection + the OS's own Copy (long-press menu or a
+  // physical keyboard's Cmd/Ctrl+C) already puts the text on the real
+  // clipboard — this only mirrors it into the Clipboard history screen, so
+  // it never interferes with the copy itself.
+  function onCopy() {
+    const text = window.getSelection()?.toString();
+    if (text) api('/clipboard', { method: 'POST', body: JSON.stringify({ text, source: 'terminal' }) }).catch(() => {});
+  }
+
   return (
     <div className="terminal-window">
       <div className="terminal-chrome">
@@ -298,7 +307,7 @@ export default function TerminalPTY({ sessionId = 'main', cwd, pendingCommand })
           <button className="tab-x" onClick={() => { setPasteFallback(false); setPasteText(''); }} aria-label="Cancel">✕</button>
         </div>
       )}
-      <pre ref={bodyRef} className="terminal-pty-viewport" onScroll={onScroll}>{renderAnsi(paneText)}</pre>
+      <pre ref={bodyRef} className="terminal-pty-viewport" onScroll={onScroll} onCopy={onCopy}>{renderAnsi(paneText)}</pre>
       <div className="terminal-compose-row">
         <span className="term-prompt-caret">$</span>
         <input

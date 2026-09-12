@@ -14,6 +14,7 @@ import {mountAppRoutes} from './apps-routes.js';
 import {mountAgentRoutes} from './agents-routes.js';
 import {mountBoardRoutes} from './agent-board-routes.js';
 import {mountDockerRoutes} from './docker-routes.js';
+import {mountClipboardRoutes} from './clipboard-routes.js';
 
 const sh=promisify(exec);
 const app=express();
@@ -716,6 +717,7 @@ mountAppRoutes(app,{auth,HOME});
 mountAgentRoutes(app,{auth,HOME,stateDir:STATE_DIR});
 mountBoardRoutes(app,{auth,stateDir:STATE_DIR});
 mountDockerRoutes(app,{auth});
+mountClipboardRoutes(app,{auth,stateDir:STATE_DIR});
 const dist=path.resolve(process.cwd(),'dist');
 app.use(express.static(dist,{
   maxAge:'1y',
