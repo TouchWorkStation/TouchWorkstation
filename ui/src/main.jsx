@@ -7,7 +7,8 @@ import {
   ArrowLeft,ChevronDown,Copy,Globe2,PanelLeft,Command,Plus,Send,FileText,GitCommit,
   RotateCcw,Maximize2,Activity,Clock3,Server,Cloud,LockKeyhole,SlidersHorizontal,
   LayoutGrid,House,PlugZap,Network,Info,Check,AlertTriangle,X,Eye,Menu,Trash2,LogIn,Loader,
-  Sparkles,Cpu as CpuIcon,Zap,Circle,PauseCircle,PlayCircle,Share,Box,Image as ImageIcon
+  Sparkles,Cpu as CpuIcon,Zap,Circle,PauseCircle,PlayCircle,Share,Box,Image as ImageIcon,
+  ClipboardList
 } from 'lucide-react';
 import TerminalPTY from './TerminalPTY.jsx';
 import MinimalTerminalPTY from './MinimalTerminalPTY.jsx';
@@ -18,6 +19,7 @@ import { AgentDetail } from './AgentDetail.jsx';
 import { RemoteAccess } from './RemoteAccess.jsx';
 import { WallpaperPicker } from './WallpaperPicker.jsx';
 import { DockerView } from './DockerView.jsx';
+import { ClipboardScreen } from './ClipboardScreen.jsx';
 import './styles.css';
 
 // The Arch/Omarchy package builds with VITE_THEME=minimal (see
@@ -37,9 +39,17 @@ export async function api(path,opts={}){
   const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}};
   if(r.status===401) throw new Error('AUTH'); if(!r.ok) throw new Error(body.error||`HTTP ${r.status}`); return body;
 }
+// Shared by every "Copy" button in the app (Remote Access URLs, access
+// codes, etc) so a copy made anywhere shows up in the Clipboard history
+// screen — logging is fire-and-forget and never blocks or fails the actual
+// copy, which is the part the user is waiting on.
+export function copyText(text,source='app'){
+ navigator.clipboard?.writeText(text);
+ api('/clipboard',{method:'POST',body:JSON.stringify({text,source})}).catch(()=>{});
+}
 const fmtUptime=s=>{if(!s&&s!==0)return'—';const d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);return d?`${d}d ${h}h ${m}m`:`${h}h ${m}m`};
 const shortPath=p=>p?.replace(/^\/home\/[^/]+/,'~')||'';
-const fmtWhen=iso=>{if(!iso)return'never';const d=new Date(iso),diff=(Date.now()-d)/1000;if(diff<60)return'just now';if(diff<3600)return`${Math.floor(diff/60)}m ago`;if(diff<86400)return`${Math.floor(diff/3600)}h ago`;return d.toLocaleDateString()};
+export const fmtWhen=iso=>{if(!iso)return'never';const d=new Date(iso),diff=(Date.now()-d)/1000;if(diff<60)return'just now';if(diff<3600)return`${Math.floor(diff/60)}m ago`;if(diff<86400)return`${Math.floor(diff/3600)}h ago`;return d.toLocaleDateString()};
 
 // Decide which terminal session a launch should land in. The product intent
 // is ONE terminal by default — every ordinary launch reuses 'main' — but
@@ -153,7 +163,7 @@ function Choice({active,title,sub,onClick=()=>{},icon:Icon}){return <button clas
 function Ready({text}){return <div><CheckCircle2/><span>{text}</span></div>}
 
 const NAV=[
- ['home',Home,'Home'],['projects',Code2,'Projects'],['agents',Bot,'Agents'],['apps',Grid3X3,'Apps'],['files',Folder,'Files'],['terminal',TerminalSquare,'Terminal'],['settings',Settings,'Settings']
+ ['home',Home,'Home'],['projects',Code2,'Projects'],['agents',Bot,'Agents'],['apps',Grid3X3,'Apps'],['files',Folder,'Files'],['terminal',TerminalSquare,'Terminal'],['clipboard',ClipboardList,'Clipboard'],['settings',Settings,'Settings']
 ];
 
 function Shell({me,settings,setSettings,omarchy}){
@@ -201,6 +211,7 @@ function Router(p){
    case'webview':return <WebviewApp app={p.navState?.app} back={()=>p.go('apps')}/>;
    case'preview-full':return <PreviewFullscreen nav={p.navState} go={p.go}/>;
    case'docker':return <DockerView go={p.go}/>;
+   case'clipboard':return <ClipboardScreen/>;
    case'files':return <Files/>;
    case'terminal':return <TerminalScreen go={p.go} omarchy={p.omarchy} initialSessionId={p.navState?.sessionId} cwd={p.navState?.cwd} pendingCommand={p.navState?.pendingCommand}/>;
    case'settings':return <SettingsView settings={p.settings} setSettings={p.setSettings} go={p.go}/>;
@@ -323,7 +334,7 @@ function ThemeMini(){return <div><div className="theme-swatches"><div className=
 function SystemMini({s}){const sp=s.specs;return <div className="system-mini"><Metric label="CPU" value={sp?`${s.cpu}% \u00b7 ${sp.cpuCores} cores`:`${s.cpu}%`} n={s.cpu}/><Metric label="Memory" value={sp?`${sp.memUsedGB} / ${sp.memTotalGB} GB`:`${s.memory}%`} n={s.memory}/><Metric label="Disk" value={sp?`${sp.diskUsedGB} / ${sp.diskTotalGB} GB`:`${s.disk}%`} n={s.disk}/><Metric label="Uptime" value={fmtUptime(s.uptime)} n={35}/><div className="all-good"><CheckCircle2/> All systems operational</div></div>}
 function Metric({label,value,n}){return <div className="metric"><span>{label}</span><strong>{value}</strong><div className="spark"><i style={{width:Math.min(100,n)+'%'}}/></div></div>}
 function MobileStat({label,value,detail}){const v=typeof value==='number'?value:0;return <div className="mobile-stat"><div className="ms-top"><span>{label}</span><strong>{v}%</strong></div><div className="ms-bar"><i style={{width:Math.min(100,v)+'%'}}/></div>{detail&&<small className="ms-detail">{detail}</small>}</div>}
-function AccessUrl({label,url}){const[copied,setCopied]=useState(false);return <div className="access-url-row"><div><small>{label}</small><strong>{url}</strong></div><button onClick={()=>{navigator.clipboard?.writeText(url);setCopied(true);setTimeout(()=>setCopied(false),1500)}}>{copied?<Check/>:<Copy/>}</button></div>}
+function AccessUrl({label,url}){const[copied,setCopied]=useState(false);return <div className="access-url-row"><div><small>{label}</small><strong>{url}</strong></div><button onClick={()=>{copyText(url,label||'app');setCopied(true);setTimeout(()=>setCopied(false),1500)}}>{copied?<Check/>:<Copy/>}</button></div>}
 function themeLabel(t){return({aubergine:'Aubergine',charcoal:'Charcoal',solar:'Solar'})[t||'aubergine']||'Aubergine'}
 function variantLabel(v){return v?(v==='omarchy'?'Omarchy':'Standard'):(BUILD_OMARCHY?'Omarchy (default)':'Standard (default)')}
 // Herdr-inspired at-a-glance agent status — see classifyAgentState in
