@@ -39,6 +39,11 @@ function fmtRate(bytesPerSec) {
 
 export default function MinimalDashboard({ go }) {
   const [status] = usePoll(() => api('/status'), 3000, []);
+  // Herdr-inspired "needs you" badge — see classifyAgentState in
+  // server/agents.js. Polled independently of the nav item itself so it
+  // stays live without opening Agents at all, which is the whole point.
+  const [agents] = usePoll(() => api('/agents').catch(() => ({ agents: [] })), 6000, []);
+  const needsYou = (agents?.agents || []).filter((a) => a.state === 'blocked').length;
   const [bgOk, setBgOk] = useState(true);
 
   return (
@@ -85,6 +90,7 @@ export default function MinimalDashboard({ go }) {
             <button key={item.label + i} className="minimal-nav-item" onClick={() => go(item.id)}>
               <Icon />
               <span>{item.label}</span>
+              {item.id === 'agents' && needsYou > 0 && <small className="minimal-nav-badge">{needsYou} need{needsYou === 1 ? 's' : ''} you</small>}
             </button>
           );
         })}

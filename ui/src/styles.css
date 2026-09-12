@@ -490,6 +490,7 @@ html[data-theme="solar"] body{background:#1a1206}
 .minimal-nav-item svg{width:21px;height:21px;color:#7ee787;stroke-width:1.5;flex:none}
 .minimal-nav-item span{font-size:14px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:#eee}
 .minimal-nav-item:active{opacity:.6}
+.minimal-nav-badge{margin-left:auto;font-size:10px;letter-spacing:.06em;text-transform:none;font-weight:600;color:#0a0a0a;background:#f6b84a;padding:4px 9px;border-radius:999px;white-space:nowrap}
 
 /* ===== Omarchy/Arch terminal — full-screen, fixed to the viewport ===== */
 .terminal-bare{position:fixed;left:0;right:0;top:var(--tw-vv-top, 0px);height:var(--tw-vvh, 100dvh);z-index:30;background:#000}
