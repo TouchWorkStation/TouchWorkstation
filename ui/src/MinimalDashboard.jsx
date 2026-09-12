@@ -12,7 +12,7 @@
 // wallpaper-default.jpg shipped here) without touching any code.
 
 import { useEffect, useState } from 'react';
-import { Cpu, MemoryStick, HardDrive, Upload, Download, TerminalSquare, Code2, Folder, GitBranch, Box, Sparkles, Settings } from 'lucide-react';
+import { Cpu, MemoryStick, HardDrive, Upload, Download, TerminalSquare, Code2, Folder, GitBranch, Box, Sparkles, Settings, Keyboard } from 'lucide-react';
 import { api, usePoll } from './main.jsx';
 
 const NAV = [
@@ -22,6 +22,9 @@ const NAV = [
   { id: 'projects', label: 'GitHub', icon: GitBranch },
   { id: 'docker', label: 'Containers', icon: Box },
   { id: 'agents', label: 'Agents', icon: Sparkles },
+  // Only on the Omarchy home — this is an Omarchy-specific keyboard
+  // trainer, so it has no equivalent entry in the standard shell's NAV.
+  { id: 'shortcuts', label: 'Omarchy Desktop Shortcuts', icon: Keyboard },
   // Settings is reachable everywhere in the standard shell (topbar cog +
   // sidebar), but the bare Omarchy home has neither, so without an entry
   // here it would be unreachable — including the new Interface toggle and

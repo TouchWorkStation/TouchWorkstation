@@ -18,6 +18,7 @@ import { AgentDetail } from './AgentDetail.jsx';
 import { RemoteAccess } from './RemoteAccess.jsx';
 import { WallpaperPicker } from './WallpaperPicker.jsx';
 import { DockerView } from './DockerView.jsx';
+import { ShortcutTrainer } from './ShortcutTrainer.jsx';
 import './styles.css';
 
 // The Arch/Omarchy package builds with VITE_THEME=minimal (see
@@ -201,6 +202,7 @@ function Router(p){
    case'webview':return <WebviewApp app={p.navState?.app} back={()=>p.go('apps')}/>;
    case'preview-full':return <PreviewFullscreen nav={p.navState} go={p.go}/>;
    case'docker':return <DockerView go={p.go}/>;
+   case'shortcuts':return <ShortcutTrainer/>;
    case'files':return <Files/>;
    case'terminal':return <TerminalScreen go={p.go} omarchy={p.omarchy} initialSessionId={p.navState?.sessionId} cwd={p.navState?.cwd} pendingCommand={p.navState?.pendingCommand}/>;
    case'settings':return <SettingsView settings={p.settings} setSettings={p.setSettings} go={p.go}/>;
