@@ -50,6 +50,7 @@ TW_USER=$APP_USER
 TW_HOME=$APP_HOME
 TW_STATE_DIR=$APP_HOME/.local/share/touchworkstation
 TW_ENV_FILE=$ENV_FILE
+BROWSER=/usr/local/bin/xdg-open
 HOME=$APP_HOME
 ENV
 chown root:"$APP_GROUP" "$ENV_FILE"; chmod 660 "$ENV_FILE"

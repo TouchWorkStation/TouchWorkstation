@@ -48,10 +48,19 @@ Group=TW_GROUP_PLACEHOLDER
 WantedBy=multi-user.target
 UNIT
 
+# /usr/local/bin, not /usr/bin: shadows the real xdg-open (from xdg-utils)
+# system-wide via normal PATH precedence, without owning the same file path
+# that package does — installing at /usr/bin/xdg-open would conflict with
+# it outright. See packaging/bin/xdg-open for why this exists.
+mkdir -p %{buildroot}/usr/local/bin
+cp -a usr/local/bin/xdg-open %{buildroot}/usr/local/bin/xdg-open
+chmod 755 %{buildroot}/usr/local/bin/xdg-open
+
 %files
 /opt/touchworkstation/app
 /opt/touchworkstation/runtime
 /usr/lib/systemd/system/touchworkstation.service
+/usr/local/bin/xdg-open
 
 %post
 set -e
@@ -105,6 +114,7 @@ TW_USER=$APP_USER
 TW_HOME=$APP_HOME
 TW_STATE_DIR=$APP_HOME/.local/share/touchworkstation
 TW_ENV_FILE=$ENV_FILE
+BROWSER=/usr/local/bin/xdg-open
 HOME=$APP_HOME
 ENV
 chown root:"$APP_GROUP" "$ENV_FILE"; chmod 660 "$ENV_FILE"
