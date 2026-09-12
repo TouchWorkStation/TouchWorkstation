@@ -27,6 +27,7 @@ TW_USER=$APP_USER
 TW_HOME=$APP_HOME
 TW_STATE_DIR=$APP_HOME/.local/share/touchworkstation
 TW_ENV_FILE=$ENV_FILE
+BROWSER=/usr/local/bin/xdg-open
 HOME=$APP_HOME
 ENV
     chown root:"$APP_GROUP" "$ENV_FILE"; chmod 660 "$ENV_FILE"
@@ -60,6 +61,11 @@ post_upgrade() {
   sed -i "s/^User=TW_USER_PLACEHOLDER/User=$APP_USER/; s/^Group=TW_GROUP_PLACEHOLDER/Group=$APP_GROUP/" \
     /usr/lib/systemd/system/touchworkstation.service
   chown -R "$APP_USER:$APP_GROUP" /opt/touchworkstation/app 2>/dev/null || true
+  # An install from before the xdg-open shim existed won't have BROWSER set
+  # — add it now so tools that check $BROWSER before falling back to
+  # xdg-open get redirected to open on the phone too, not just tools that
+  # call xdg-open directly.
+  grep -q '^BROWSER=' "$ENV_FILE" 2>/dev/null || echo 'BROWSER=/usr/local/bin/xdg-open' >> "$ENV_FILE"
   # A rebuilt bundle on disk doesn't do anything on its own — Node keeps
   # running whatever code was already loaded in memory until the process
   # restarts. Without this, every upgrade silently kept serving the old

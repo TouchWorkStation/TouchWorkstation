@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Installed to /usr/local/bin/xdg-open — /usr/local/bin precedes /usr/bin in
+# the default PATH on every mainstream distro, so this shadows the real
+# xdg-open (from xdg-utils) system-wide, not just inside TouchWorkstation's
+# own terminal sessions.
+#
+# Why this exists: TouchWorkstation is driven from a phone. When a CLI tool
+# running in its terminal (gh auth login, a dev server's "opening browser…",
+# anything calling xdg-open or respecting $BROWSER) tries to open a local
+# GUI browser, there's nobody looking at this machine's own display to see
+# it — on Omarchy that's a real, running Hyprland session, but launching a
+# window there is invisible to whoever's actually driving this from their
+# phone. Printing the URL in a fixed, recognizable format instead lets
+# TerminalPTY.jsx / MinimalTerminalPTY.jsx catch it and offer to open it on
+# the actual device being used, regardless of which tool asked or why.
+#
+# $BROWSER is set to this same path in the packaging install scripts'
+# generated env file, since some tools check that before ever trying
+# xdg-open — this shim covers both paths with one script.
+echo "TOUCHWORKSTATION_OPEN_URL: $1"

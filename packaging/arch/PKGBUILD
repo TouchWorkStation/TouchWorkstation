@@ -38,8 +38,10 @@ source=("$pkgname::git+https://github.com/TouchWorkStation/TouchWorkstation.git"
         "touchworkstation-status"
         "touchworkstation-credentials"
         "touchworkstation-password"
-        "touchworkstation-restart")
+        "touchworkstation-restart"
+        "xdg-open")
 sha256sums=('SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'
@@ -85,4 +87,11 @@ package() {
   for bin in touchworkstation-status touchworkstation-credentials touchworkstation-password touchworkstation-restart; do
     install -Dm755 "$srcdir/$bin" "$pkgdir/usr/bin/$bin"
   done
+
+  # /usr/local/bin, not /usr/bin: this shadows the real xdg-open (from
+  # xdg-utils) system-wide via normal PATH precedence, without owning the
+  # same file path as that package — installing it at /usr/bin/xdg-open
+  # would conflict with xdg-utils outright. See packaging/bin/xdg-open for
+  # why this exists at all.
+  install -Dm755 "$srcdir/xdg-open" "$pkgdir/usr/local/bin/xdg-open"
 }

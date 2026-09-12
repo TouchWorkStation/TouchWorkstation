@@ -181,8 +181,23 @@ export default function TerminalPTY({ sessionId = 'main', cwd, pendingCommand })
           .replace(/\x1b\][^\x07]*\x07/g, '');       // OSC escapes
         const joined = buf.replace(/[\r\n]+/g, '');
         streamBuf.current = buf.slice(-4000);
-        const m = joined.match(/https?:\/\/[^\s'"]*(?:oauth|authorize|login|callback|setup)[^\s'"]*\?[^\s'"]+/i);
-        if (m && /client_id=|code=|token=/i.test(m[0])) setAuthUrl(m[0]);
+        // TOUCHWORKSTATION_OPEN_URL is printed by the xdg-open shim
+        // (packaging/bin/xdg-open) instead of trying to launch a GUI
+        // browser on a headless machine nobody's looking at — catches ANY
+        // tool trying to open a browser, not just OAuth flows. Falls back
+        // to the OAuth-shaped heuristic for tools that print a sign-in URL
+        // directly without going through xdg-open at all.
+        // Matched against `buf` (real line breaks still intact), not
+        // `joined` (which strips all of \r\n) — \S+ needs an actual
+        // newline to stop at, or it swallows whatever the shell prints
+        // right after the URL with no separating whitespace.
+        const marker = buf.match(/TOUCHWORKSTATION_OPEN_URL:\s*(\S+)/);
+        if (marker) {
+          setAuthUrl(marker[1]);
+        } else {
+          const m = joined.match(/https?:\/\/[^\s'"]*(?:oauth|authorize|login|callback|setup)[^\s'"]*\?[^\s'"]+/i);
+          if (m && /client_id=|code=|token=/i.test(m[0])) setAuthUrl(m[0]);
+        }
         // A burst of output likely means something just happened on
         // screen — refresh sooner than the next regular poll tick.
         clearTimeout(burstTimer.current);
@@ -259,10 +274,10 @@ export default function TerminalPTY({ sessionId = 'main', cwd, pendingCommand })
       {authUrl && (
         <div className="term-auth-banner">
           <div className="tab-text">
-            <strong>Sign-in link detected</strong>
-            <small>Open it to authenticate, then come back to the terminal.</small>
+            <strong>Link detected</strong>
+            <small>Open it on this device, then come back to the terminal.</small>
           </div>
-          <button className="tab-open" onClick={() => window.open(authUrl, '_blank', 'noopener')}>Open sign-in</button>
+          <button className="tab-open" onClick={() => window.open(authUrl, '_blank', 'noopener')}>Open</button>
           <button className="tab-x" onClick={() => setAuthUrl(null)} aria-label="Dismiss">✕</button>
         </div>
       )}

@@ -501,6 +501,7 @@ html[data-theme="solar"] body{background:#1a1206}
 .terminal-bare .term-tab.home{padding:8px 10px;color:#eee}
 .terminal-bare .term-tab.home svg{width:15px;height:15px}
 .mt-root{flex:1;min-height:0;display:flex;flex-direction:column;position:relative;overflow:hidden;background:#000}
+.mt-pane-wrap{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
 .mt-pane{flex:1;min-height:0;margin:0;padding:16px 16px 8px;overflow-y:auto;-webkit-overflow-scrolling:touch;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:#d6d6d6;white-space:pre-wrap;word-break:break-word;user-select:text;-webkit-user-select:text}
 .mt-prompt-row{display:flex;align-items:center;gap:10px;padding:6px 16px 10px;flex:none;border-top:1px solid rgba(255,255,255,.08)}
 .mt-caret{color:#7ee787;font-size:15px;font-weight:700;flex:none}
@@ -508,6 +509,9 @@ html[data-theme="solar"] body{background:#1a1206}
 .mt-keys{display:flex;gap:2px;padding:0 12px calc(env(safe-area-inset-bottom) + 10px);flex:none;overflow-x:auto;-webkit-overflow-scrolling:touch;border-top:1px solid rgba(255,255,255,.08)}
 .mt-keys button{flex:none;border:0;background:transparent;color:#6b6b6b;font:11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:9px 11px;text-transform:lowercase}
 .mt-keys button:active{color:#7ee787}
+.mt-jump{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:2;display:flex;align-items:center;gap:6px;border:1px solid rgba(126,231,135,.4);background:rgba(10,10,10,.92);color:#7ee787;font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace;padding:7px 14px;border-radius:999px;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+.mt-jump svg{width:13px;height:13px}
+.mt-jump:active{background:rgba(126,231,135,.15)}
 .mt-auth{display:flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(126,231,135,.1);border-top:1px solid rgba(126,231,135,.3);flex:none;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#d6d6d6}
 .mt-auth button{border:0;background:transparent;color:#7ee787;font:inherit;padding:4px 6px}
 .mt-paste-fallback{display:flex;align-items:center;gap:8px;padding:8px 16px;background:#000;border-top:1px solid rgba(255,255,255,.1);flex:none}

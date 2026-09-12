@@ -12,6 +12,7 @@
 // terminal emulator works, not a web form sitting below one.
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ArrowDown } from 'lucide-react';
 import { api } from './main.jsx';
 
 const CONTROL_KEYS = [
@@ -43,6 +44,13 @@ export default function MinimalTerminalPTY({ sessionId = 'main', cwd, pendingCom
   const [input, setInput] = useState('');
   const [pasteFallback, setPasteFallback] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  // Mirrors autoScrollRef but as state, since a ref alone doesn't trigger a
+  // re-render — this is what shows/hides the "jump to latest" button. Belt
+  // and suspenders alongside the auto-scroll-on-new-content effect below:
+  // whatever the exact cause of "scrolled away from the newest output and
+  // couldn't easily find my way back", this gives a guaranteed, obvious way
+  // back to it with one tap instead of hunting for it by scrolling.
+  const [atBottom, setAtBottom] = useState(true);
 
   // tmux's capture-pane -e returns text with the terminal's raw ANSI escape
   // sequences embedded (colors, cursor moves, hyperlinks, title-set OSCs).
@@ -99,6 +107,7 @@ export default function MinimalTerminalPTY({ sessionId = 'main', cwd, pendingCom
       // rAF, not immediate: the CSS var write above needs a layout pass
       // before scrollHeight/clientHeight reflect the new size.
       autoScrollRef.current = true;
+      setAtBottom(true);
       requestAnimationFrame(() => {
         const el = bodyRef.current;
         if (el) el.scrollTop = el.scrollHeight;
@@ -131,10 +140,20 @@ export default function MinimalTerminalPTY({ sessionId = 'main', cwd, pendingCom
     if (el && autoScrollRef.current) el.scrollTop = el.scrollHeight;
   }, [paneText]);
 
+  function scrollToBottom() {
+    const el = bodyRef.current;
+    if (!el) return;
+    autoScrollRef.current = true;
+    setAtBottom(true);
+    el.scrollTop = el.scrollHeight;
+  }
+
   function onScroll() {
     const el = bodyRef.current;
     if (!el) return;
-    autoScrollRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    const nowAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    autoScrollRef.current = nowAtBottom;
+    setAtBottom(nowAtBottom);
   }
 
   function connect() {
@@ -157,8 +176,23 @@ export default function MinimalTerminalPTY({ sessionId = 'main', cwd, pendingCom
           .replace(/\x1b\][^\x07]*\x07/g, '');
         const joined = buf.replace(/[\r\n]+/g, '');
         streamBuf.current = buf.slice(-4000);
-        const m = joined.match(/https?:\/\/[^\s'"]*(?:oauth|authorize|login|callback|setup)[^\s'"]*\?[^\s'"]+/i);
-        if (m && /client_id=|code=|token=/i.test(m[0])) setAuthUrl(m[0]);
+        // TOUCHWORKSTATION_OPEN_URL is printed by the xdg-open shim
+        // (packaging/bin/xdg-open) instead of trying to launch a GUI
+        // browser on a headless machine nobody's looking at — catches ANY
+        // tool trying to open a browser, not just OAuth flows. Falls back
+        // to the OAuth-shaped heuristic for tools that print a sign-in URL
+        // directly without going through xdg-open at all.
+        // Matched against `buf` (real line breaks still intact), not
+        // `joined` (which strips all of \r\n) — \S+ needs an actual
+        // newline to stop at, or it swallows whatever the shell prints
+        // right after the URL with no separating whitespace.
+        const marker = buf.match(/TOUCHWORKSTATION_OPEN_URL:\s*(\S+)/);
+        if (marker) {
+          setAuthUrl(marker[1]);
+        } else {
+          const m = joined.match(/https?:\/\/[^\s'"]*(?:oauth|authorize|login|callback|setup)[^\s'"]*\?[^\s'"]+/i);
+          if (m && /client_id=|code=|token=/i.test(m[0])) setAuthUrl(m[0]);
+        }
         clearTimeout(burstTimer.current);
         burstTimer.current = setTimeout(refreshPane, 250);
       } else if (msg.type === 'exit') {
@@ -202,12 +236,19 @@ export default function MinimalTerminalPTY({ sessionId = 'main', cwd, pendingCom
 
   return (
     <div className="mt-root">
-      <pre ref={bodyRef} className="mt-pane" onScroll={onScroll}>{paneText}</pre>
+      <div className="mt-pane-wrap">
+        <pre ref={bodyRef} className="mt-pane" onScroll={onScroll}>{paneText}</pre>
+        {!atBottom && (
+          <button className="mt-jump" onClick={scrollToBottom} aria-label="Jump to latest">
+            <ArrowDown /> latest
+          </button>
+        )}
+      </div>
 
       {authUrl && (
         <div className="mt-auth">
-          <span>{'sign-in link detected \u2014'}</span>
-          <button onClick={() => window.open(authUrl, '_blank', 'noopener')}>open</button>
+          <span>{'link detected \u2014'}</span>
+          <button onClick={() => window.open(authUrl, '_blank', 'noopener')}>open on this device</button>
           <button onClick={() => setAuthUrl(null)} aria-label="dismiss">{'\u2715'}</button>
         </div>
       )}
@@ -233,6 +274,7 @@ export default function MinimalTerminalPTY({ sessionId = 'main', cwd, pendingCom
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
+          placeholder="Type a command…"
           autoCapitalize="none"
           autoCorrect="off"
           autoComplete="off"

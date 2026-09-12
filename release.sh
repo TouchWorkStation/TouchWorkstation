@@ -72,8 +72,18 @@ mkdir -p "$DEB_ROOT/opt/touchworkstation/runtime"
 curl -fsSL "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-x64.tar.xz" \
   | tar -xJ --strip-components=1 -C "$DEB_ROOT/opt/touchworkstation/runtime"
 cp packaging/debian/touchworkstation.service "$DEB_ROOT/lib/systemd/system/"
-cp packaging/bin/* "$DEB_ROOT/usr/bin/"
+# xdg-open is deliberately excluded from this copy — it needs to land at
+# /usr/local/bin, not /usr/bin, or it'd conflict with the real xdg-open
+# (from xdg-utils), which already owns that exact path. See it handled
+# separately just below.
+for f in packaging/bin/*; do
+  [ "$(basename "$f")" = "xdg-open" ] && continue
+  cp "$f" "$DEB_ROOT/usr/bin/"
+done
 chmod +x "$DEB_ROOT"/usr/bin/*
+mkdir -p "$DEB_ROOT/usr/local/bin"
+cp packaging/bin/xdg-open "$DEB_ROOT/usr/local/bin/xdg-open"
+chmod +x "$DEB_ROOT/usr/local/bin/xdg-open"
 cp packaging/debian/control packaging/debian/postinst packaging/debian/prerm "$DEB_ROOT/DEBIAN/"
 DEB_VERSION="${TAG#v}"
 sed -i "s/^Version: .*/Version: $DEB_VERSION/" "$DEB_ROOT/DEBIAN/control"
@@ -88,10 +98,18 @@ RPM_VERSION="$(echo "${TAG#v}" | sed 's/-/./g')"
 RPMBUILD_DIR="$DIST/rpmbuild"
 mkdir -p "$RPMBUILD_DIR"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 RPM_PAYLOAD="$DIST/rpm-payload/touchworkstation-$RPM_VERSION"
-mkdir -p "$RPM_PAYLOAD/opt/touchworkstation" "$RPM_PAYLOAD/usr/bin"
+mkdir -p "$RPM_PAYLOAD/opt/touchworkstation" "$RPM_PAYLOAD/usr/bin" "$RPM_PAYLOAD/usr/local/bin"
 cp -a "$DEB_ROOT/opt/touchworkstation/app" "$RPM_PAYLOAD/opt/touchworkstation/"
 cp -a "$DEB_ROOT/opt/touchworkstation/runtime" "$RPM_PAYLOAD/opt/touchworkstation/"
-cp packaging/bin/* "$RPM_PAYLOAD/usr/bin/"; chmod +x "$RPM_PAYLOAD"/usr/bin/*
+# Same exclusion as the .deb section above — xdg-open goes to
+# /usr/local/bin, not /usr/bin, so it doesn't collide with xdg-utils' file.
+for f in packaging/bin/*; do
+  [ "$(basename "$f")" = "xdg-open" ] && continue
+  cp "$f" "$RPM_PAYLOAD/usr/bin/"
+done
+chmod +x "$RPM_PAYLOAD"/usr/bin/*
+cp packaging/bin/xdg-open "$RPM_PAYLOAD/usr/local/bin/xdg-open"
+chmod +x "$RPM_PAYLOAD/usr/local/bin/xdg-open"
 (cd "$DIST/rpm-payload" && tar -czf "$RPMBUILD_DIR/SOURCES/touchworkstation-$RPM_VERSION.tar.gz" "touchworkstation-$RPM_VERSION")
 sed "s/^Version:.*/Version:        $RPM_VERSION/" packaging/rpm/touchworkstation.spec > "$RPMBUILD_DIR/SPECS/touchworkstation.spec"
 rpmbuild --define "_topdir $RPMBUILD_DIR" -bb "$RPMBUILD_DIR/SPECS/touchworkstation.spec"
