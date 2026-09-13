@@ -6,12 +6,27 @@ import fs from 'fs';
 import {
   initAgents, runtimeStatus, listAgents, getAgent, createAgent,
   updateAgent, deleteAgent, resolveLaunch, markLaunched, liveSessions,
-  resolveInstall, resolveLogin, classifyAgentState,
+  resolveInstall, resolveLogin, classifyAgentState, resolveOpen,
 } from './agents.js';
 import { purgeAgent } from './agent-board.js';
 
-export function mountAgentRoutes(app, { auth, HOME, stateDir }) {
+export function mountAgentRoutes(app, { auth, HOME, stateDir, paneCommand }) {
   initAgents({ stateDir });
+
+  // One tap on a CLI tile → install, log in, launch, or just reattach,
+  // whichever is actually needed. Each CLI gets its own dedicated tmux
+  // session (cli-<runtime>) so it persists across reconnects and never
+  // collides with the user's main terminal — and so coming back to it
+  // resumes the same conversation instead of starting a new one.
+  app.post('/api/agents/runtimes/:runtime/open', auth, async (req, res) => {
+    const id = req.params.runtime;
+    let running = '';
+    try { running = paneCommand ? await paneCommand(`cli-${id}`) : ''; } catch { running = ''; }
+    const r = resolveOpen(id, running);
+    if (!r) return res.status(404).json({ error: 'Unknown runtime' });
+    if (r.action === 'unavailable') return res.status(400).json({ error: `${r.label} has no installer available.` });
+    res.json({ ...r, cwd: HOME });
+  });
 
   // Available runtimes + whether each is installed on this machine.
   app.get('/api/agents/runtimes', auth, (req, res) => {

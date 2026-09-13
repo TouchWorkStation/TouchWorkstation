@@ -55,6 +55,16 @@ export const RUNTIMES = {
     // terminal — no local browser or callback needed.
     loginCommand: 'claude setup-token',
     installCommand: `${ENSURE_NPM} && npm install -g @anthropic-ai/claude-code`,
+    // Where this CLI persists its own credentials once its login flow
+    // completes. Existence of any of these is what "already logged in"
+    // means — checked rather than remembered, so revoking a token or
+    // logging out from the CLI itself is reflected immediately instead of
+    // leaving a stale "logged in" flag behind in our own config.
+    // .claude.json alone is NOT proof of login — it's the general config
+    // file and exists after any first run, authenticated or not. Treating
+    // it as a login marker would skip the login step and drop the user into
+    // a CLI that immediately prompts for auth anyway.
+    authPaths: ['.claude/.credentials.json', { path: '.claude.json', contains: 'oauthAccount' }],
     supportsModels: true,
     models: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'],
     docs: 'Anthropic Claude Code CLI',
@@ -90,6 +100,7 @@ export const RUNTIMES = {
     // setting only the user can flip, not something this app can automate.
     loginCommand: 'codex login --device-auth',
     installCommand: `${ENSURE_NPM} && npm install -g @openai/codex`,
+    authPaths: ['.codex/auth.json'],
     supportsModels: false,
     models: [],
     docs: 'OpenAI Codex CLI',
@@ -107,6 +118,7 @@ export const RUNTIMES = {
     // action.
     loginCommand: null,
     installCommand: 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
+    authPaths: ['.antigravity/auth.json', '.config/antigravity/auth.json'],
     supportsModels: false,
     models: [],
     docs: 'Google Antigravity CLI (agy)',
@@ -160,9 +172,18 @@ export function initAgents({ stateDir }) {
 
 // ---- runtime detection ----------------------------------------------------
 
+// Short TTL rather than a permanent memo: a CLI gets installed FROM this app,
+// in a terminal this same process is serving. A cache that never expires
+// would keep reporting "not installed" for the life of the server, so the
+// tile would offer to install it again on every tap — forever, and the user
+// never reaches the launch path no matter how many times the install
+// succeeded. A few seconds is plenty to spare the repeated `command -v`
+// while still noticing an install that just finished.
+const DETECT_TTL_MS = 5000;
 const detectCache = new Map();
 function binOnPath(bin) {
-  if (detectCache.has(bin)) return detectCache.get(bin);
+  const hit = detectCache.get(bin);
+  if (hit && Date.now() - hit.at < DETECT_TTL_MS) return hit.found;
   let found = false;
   const PATH = augmentedPath();
   try {
@@ -173,8 +194,63 @@ function binOnPath(bin) {
       try { const p = path.join(dir, bin); if (fs.existsSync(p) && (fs.statSync(p).mode & 0o111)) { found = true; break; } } catch { /* ignore */ }
     }
   }
-  detectCache.set(bin, found);
+  detectCache.set(bin, { found, at: Date.now() });
   return found;
+}
+
+// Has this CLI's own login flow already been completed on this machine?
+// Runtimes with no authPaths (Ollama — purely local) are always "logged in"
+// so they never get sent through a login step that doesn't exist.
+export function runtimeLoggedIn(id) {
+  const r = RUNTIMES[id];
+  if (!r) return false;
+  if (!r.authPaths || !r.authPaths.length) return true;
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  return r.authPaths.some((entry) => {
+    const rel = typeof entry === 'string' ? entry : entry.path;
+    const needle = typeof entry === 'string' ? null : entry.contains;
+    const full = path.join(home, rel);
+    try {
+      if (fs.statSync(full).size === 0) return false;
+      if (!needle) return true;
+      return fs.readFileSync(full, 'utf8').includes(needle);
+    } catch { return false; }
+  });
+}
+
+// The whole "tap the CLI and it does the right thing" decision, made in one
+// place on the server where all three inputs (is it installed, is it logged
+// in, is it already running) actually live. The client just follows the
+// returned `action` — it never has to sequence install/login/launch itself.
+//
+// `runningCommand` is the foreground process of this CLI's own dedicated
+// tmux session, passed in by the route (only index.js has the tmux helper).
+// If the CLI is already sitting in there, we attach and send NOTHING —
+// re-sending the launch command would type "claude" into a Claude prompt
+// that's already open, which is exactly the "it just runs it again" bug.
+export function resolveOpen(runtimeId, runningCommand) {
+  const r = RUNTIMES[runtimeId];
+  if (!r) return null;
+  const sessionId = `cli-${runtimeId}`;
+  // Checked FIRST, ahead of the install test: something already running in
+  // this CLI's own session is proof enough that it's usable, and trusting
+  // that over PATH detection is what stops a stale "not installed" reading
+  // from re-running the installer on top of a CLI that is already open.
+  const SHELLS = new Set(['bash', 'sh', 'zsh', 'fish', 'dash']);
+  if (runningCommand && !SHELLS.has(runningCommand)) {
+    return { action: 'attach', sessionId, label: r.label };
+  }
+  if (!binOnPath(r.bin)) {
+    if (!r.installCommand) return { action: 'unavailable', sessionId, label: r.label };
+    return { action: 'install', command: r.installCommand, sessionId, label: r.label };
+  }
+  if (!runtimeLoggedIn(runtimeId)) {
+    // Antigravity has no separate login subcommand — running it is the login
+    // flow (it prints a sign-in URL + code on first run), so fall through to
+    // its normal command rather than inventing one.
+    return { action: 'login', command: r.loginCommand || r.defaultCommand, sessionId, label: r.label };
+  }
+  return { action: 'launch', command: r.defaultCommand, sessionId, label: r.label };
 }
 
 export function runtimeStatus() {
@@ -182,6 +258,7 @@ export function runtimeStatus() {
     id,
     label: r.label,
     installed: binOnPath(r.bin),
+    loggedIn: runtimeLoggedIn(id),
     supportsModels: r.supportsModels,
     models: r.models,
     defaultCommand: r.defaultCommand,

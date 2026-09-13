@@ -21,7 +21,7 @@ import { WallpaperPicker } from './WallpaperPicker.jsx';
 import { DockerView } from './DockerView.jsx';
 import { ClipboardScreen } from './ClipboardScreen.jsx';
 import { ShortcutTrainer } from './ShortcutTrainer.jsx';
-import TiledDashboard from './TiledDashboard.jsx';
+import TiledDashboard, { TILED_PANES, DEFAULT_TILED_PANES } from './TiledDashboard.jsx';
 import './styles.css';
 
 // The Arch/Omarchy package builds with VITE_THEME=minimal (see
@@ -226,7 +226,7 @@ function Router(p){
    case'files':return <Files/>;
    case'terminal':return <TerminalScreen go={p.go} omarchy={p.omarchy} initialSessionId={p.navState?.sessionId} cwd={p.navState?.cwd} pendingCommand={p.navState?.pendingCommand}/>;
    case'settings':return <SettingsView settings={p.settings} setSettings={p.setSettings} go={p.go}/>;
-   default:return p.omarchy ? (p.settings?.omarchyLayout==='tiled' ? <TiledDashboard go={p.go}/> : <MinimalDashboard go={p.go}/>) : <Dashboard me={p.me} go={p.go} openProject={p.openProject} settings={p.settings}/>;
+   default:return p.omarchy ? (p.settings?.omarchyLayout==='tiled' ? <TiledDashboard go={p.go} settings={p.settings}/> : <MinimalDashboard go={p.go}/>) : <Dashboard me={p.me} go={p.go} openProject={p.openProject} settings={p.settings}/>;
  }
 }
 
@@ -347,6 +347,31 @@ function Metric({label,value,n}){return <div className="metric"><span>{label}</s
 function MobileStat({label,value,detail}){const v=typeof value==='number'?value:0;return <div className="mobile-stat"><div className="ms-top"><span>{label}</span><strong>{v}%</strong></div><div className="ms-bar"><i style={{width:Math.min(100,v)+'%'}}/></div>{detail&&<small className="ms-detail">{detail}</small>}</div>}
 function AccessUrl({label,url}){const[copied,setCopied]=useState(false);return <div className="access-url-row"><div><small>{label}</small><strong>{url}</strong></div><button onClick={()=>{copyText(url,label||'app');setCopied(true);setTimeout(()=>setCopied(false),1500)}}>{copied?<Check/>:<Copy/>}</button></div>}
 function themeLabel(t){return({aubergine:'Aubergine',charcoal:'Charcoal',solar:'Solar'})[t||'aubergine']||'Aubergine'}
+// Which panes the tiled home screen shows, and in what order. Deliberately
+// arrows rather than HomeTiles.jsx's pointer-drag: that list is long enough
+// to need dragging, this one is six fixed rows where two taps is simpler
+// and works the same on a phone as on a desktop.
+function TiledPaneSettings({settings,setSettings}){
+ const order=(settings?.tiledPanes?.length?settings.tiledPanes:DEFAULT_TILED_PANES).filter(id=>TILED_PANES.some(p=>p.id===id));
+ const off=TILED_PANES.filter(p=>!order.includes(p.id));
+ function persist(next){setSettings(s=>({...s,tiledPanes:next}));api('/settings',{method:'POST',body:JSON.stringify({tiledPanes:next})}).catch(()=>{})}
+ function move(id,dir){const i=order.indexOf(id),j=i+dir;if(j<0||j>=order.length)return;const n=[...order];[n[i],n[j]]=[n[j],n[i]];persist(n)}
+ return <div className="home-tile-settings">
+  <p className="home-tile-hint">Shown on the tiled home screen, top to bottom. Changes apply immediately.</p>
+  <div className="home-tile-list">
+   {order.map((id,i)=>{const p=TILED_PANES.find(x=>x.id===id);return <div key={id} className="home-tile-row">
+    <div className="home-tile-row-copy"><strong>{p.name}</strong><small>{p.description}</small></div>
+    <button className="tile-mini-btn" onClick={()=>move(id,-1)} disabled={i===0} aria-label={`Move ${p.name} up`}>↑</button>
+    <button className="tile-mini-btn" onClick={()=>move(id,1)} disabled={i===order.length-1} aria-label={`Move ${p.name} down`}>↓</button>
+    <button className="home-tile-remove" onClick={()=>persist(order.filter(x=>x!==id))} aria-label={`Hide ${p.name}`}><X/></button>
+   </div>})}
+   {!order.length&&<div className="empty-state">Every pane is hidden — add one below.</div>}
+  </div>
+  {off.length>0&&<><p className="home-tile-hint">Add a pane</p><div className="home-tile-add-grid">
+   {off.map(p=><button key={p.id} className="home-tile-add-chip" onClick={()=>persist([...order,p.id])}><span>{p.name}</span><Plus/></button>)}
+  </div></>}
+ </div>;
+}
 function variantLabel(v){return v?(v==='omarchy'?'Omarchy':'Standard'):(BUILD_OMARCHY?'Omarchy (default)':'Standard (default)')}
 // Herdr-inspired at-a-glance agent status — see classifyAgentState in
 // server/agents.js for what each state actually means and how it's derived.
@@ -669,6 +694,7 @@ function SettingsView({settings,setSettings,go}){const[vpn,setVpn]=useState(null
  <Setting icon={Palette} title="Appearance" status={themeLabel(settings?.theme)} text="Choose how TouchWorkstation feels. Your choice is saved and applied instantly."><div className="theme-picker">{[['aubergine','Aubergine','aub'],['charcoal','Charcoal','char'],['solar','Solar','sol']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.theme||'aubergine')===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,theme:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({theme:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
  <Setting icon={LayoutGrid} title="Interface" status={variantLabel(settings?.uiVariant)} text="Omarchy replaces the home screen and terminal with a full-black, keyboard-driven layout. This overrides whatever the installed build set by default."><div className="theme-picker">{[['standard','Standard','std'],['omarchy','Omarchy','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.uiVariant?settings.uiVariant:(BUILD_OMARCHY?'omarchy':'standard'))===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,uiVariant:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({uiVariant:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
  {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&<Setting icon={LayoutGrid} title="Home Layout" status={settings?.omarchyLayout==='tiled'?'Tiled':'Classic'} text="Tiled shows several live, independently-usable panes at once — terminal, files, an editor, processes, and stats — like a real tiling window manager."><div className="theme-picker">{[['classic','Classic','std'],['tiled','Tiled','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.omarchyLayout||'classic')===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,omarchyLayout:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({omarchyLayout:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>}
+ {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&settings?.omarchyLayout==='tiled'&&<Setting icon={LayoutGrid} title="Tiled panes" status={`${(settings?.tiledPanes?.length?settings.tiledPanes:DEFAULT_TILED_PANES).length} shown`} text="Choose which panes appear on the tiled home screen. Turn off the ones you don't use to give the rest more room."><TiledPaneSettings settings={settings} setSettings={setSettings}/></Setting>}
  <Setting icon={ImageIcon} title="Wallpaper" status="Omarchy home screen" text="Upload and crop a photo for the Omarchy home screen's background.">
   <div className="wp-setting-row">
    <img className="wp-thumb" src={`/wallpaper.jpg?v=${wpVersion}`} alt="" onError={(e)=>{e.currentTarget.style.visibility='hidden'}} onLoad={(e)=>{e.currentTarget.style.visibility='visible'}}/>
@@ -677,7 +703,7 @@ function SettingsView({settings,setSettings,go}){const[vpn,setVpn]=useState(null
  </Setting>
  <Setting icon={Grid3X3} title="Home screen" status={`${(settings?.homeTiles&&settings.homeTiles.length)||4} tiles`} text="Choose which shortcuts show on the home screen, and in what order."><HomeTileSettings settings={settings} setSettings={setSettings}/></Setting>
  <BuildInfo me={me}/>
- <UpdateCheck/>
+ <UpdateCheck go={go}/>
  {msg&&<div className="settings-message"><Info/>{msg}</div>}</div>}
 // Real update check (previous version was a hardcoded placeholder). Hits
 // GitHub, compares against the running build's SHA. If this install has
@@ -688,7 +714,7 @@ function SettingsView({settings,setSettings,go}){const[vpn,setVpn]=useState(null
 // own (touchworkstation.install's post_upgrade already does that). No
 // sudoers rule, no password ever seen by the app. Anywhere else, this just
 // shows the full manual command like before.
-function UpdateCheck(){
+function UpdateCheck({go}){
  const[busy,setBusy]=useState(false),[result,setResult]=useState(null);
  const[building,setBuilding]=useState(false);
  async function check(){
@@ -726,10 +752,18 @@ function UpdateCheck(){
     <span>Build ready — run this on the machine to install it (this also restarts the service):</span>
     <code>{result.build.command}</code>
    </div>}
-   {result.status==='update-available'&&!result.build&&(!result.canAutoBuild)&&result.installCommand&&<div className="update-cmd">
-    <span>Run on this machine to apply:</span>
-    <code>{result.installCommand}</code>
-   </div>}
+   {result.status==='update-available'&&!result.build&&(!result.canAutoBuild)&&result.installCommand&&<>
+    {/* Runs the real installer in a terminal session rather than printing a
+        command to retype. The installer needs sudo to install the package,
+        and a PTY is the one place the user can actually answer that prompt —
+        so this is a genuine one-tap update on every distro, instead of the
+        Arch-only auto-build path being the only thing that ever applied. */}
+    <Button className="primary" onClick={()=>go?.('terminal',{pendingCommand:result.installCommand,sessionId:'update'})}>Update now</Button>
+    <div className="update-cmd">
+     <span>Opens a terminal and runs the installer — enter your password when it asks. Or run it yourself:</span>
+     <code>{result.installCommand}</code>
+    </div>
+   </>}
   </div>}
  </Setting>;
 }

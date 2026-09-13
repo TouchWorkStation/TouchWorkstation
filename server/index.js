@@ -507,8 +507,12 @@ app.post('/api/settings',auth,(req,res)=>{
     const t=body.homeTiles;
     if(Array.isArray(t)&&t.every(x=>typeof x==='string'))c.homeTiles=t;
   }
+  if('tiledPanes' in body){
+    const t=body.tiledPanes;
+    if(Array.isArray(t)&&t.every(x=>typeof x==='string'))c.tiledPanes=t;
+  }
   saveConfig(c);
-  res.json({ok:true,theme:c.theme,homeTiles:c.homeTiles,uiVariant:c.uiVariant,omarchyLayout:c.omarchyLayout});
+  res.json({ok:true,theme:c.theme,homeTiles:c.homeTiles,uiVariant:c.uiVariant,omarchyLayout:c.omarchyLayout,tiledPanes:c.tiledPanes});
 });
 
 // ---- wallpaper (Omarchy home-screen background) ----
@@ -780,7 +784,16 @@ app.use((req,res,next)=>{
 // API routes must be registered BEFORE the static handler and SPA catch-all,
 // otherwise the catch-all returns index.html for /api/* requests.
 mountAppRoutes(app,{auth,HOME});
-mountAgentRoutes(app,{auth,HOME,stateDir:STATE_DIR});
+// Foreground process of a given tw-<id> tmux session, or '' if there's no
+// such session. Lets the agent routes tell "this CLI is already open, just
+// reattach" apart from "this session is an idle shell, send the command".
+async function paneCommand(sessionId){
+  try{
+    const {stdout}=await sh(`tmux list-panes -t ${JSON.stringify('tw-'+sessionId)} -F '#{pane_current_command}' 2>/dev/null || true`,{env:SPAWN_ENV});
+    return stdout.trim().split('\n')[0]||'';
+  }catch{return''}
+}
+mountAgentRoutes(app,{auth,HOME,stateDir:STATE_DIR,paneCommand});
 mountBoardRoutes(app,{auth,stateDir:STATE_DIR});
 mountDockerRoutes(app,{auth});
 mountClipboardRoutes(app,{auth,stateDir:STATE_DIR});
