@@ -41,19 +41,29 @@ const ENSURE_NPM = 'command -v npm >/dev/null 2>&1 || { '
   + 'command -v dnf >/dev/null 2>&1 && sudo dnf install -y nodejs npm || '
   + 'command -v pacman >/dev/null 2>&1 && sudo pacman -Sy --noconfirm nodejs npm; }';
 
+// claude's default first-run flow expects an OAuth redirect back to a browser
+// on THIS machine — no good when you're driving it from a phone. `claude
+// setup-token` is the headless escape hatch: it prints a URL you complete on
+// any device, then prints a long-lived token. But it does NOT persist that
+// token anywhere `claude` reads — it just tells you to `export
+// CLAUDE_CODE_OAUTH_TOKEN=…` yourself and exits. So signing in appeared to
+// work and then `claude` still asked to sign in (reported from a real phone).
+//
+// This wrapper closes that gap: run setup-token (still the headless flow),
+// capture the sk-ant-oat… token it prints, write it to a small env file, and
+// source that file from the shell rc files so every future terminal — and the
+// launch right after this one — inherits it. Idempotent (the rc line is added
+// once) and verified against a stubbed `claude`. If capture somehow fails it
+// falls back to telling the user the manual export, so it never silently
+// half-works. Written for bash/zsh (Omarchy's default shell is bash).
+const CLAUDE_LOGIN = `LOG=$(mktemp); claude setup-token 2>&1 | tee "$LOG"; TOKEN=$(grep -oE 'sk-ant-oat[0-9]{2}-[A-Za-z0-9_-]+' "$LOG" | tail -1); rm -f "$LOG"; if [ -n "$TOKEN" ]; then F="$HOME/.config/touchworkstation/cli.env"; mkdir -p "$(dirname "$F")"; printf 'export CLAUDE_CODE_OAUTH_TOKEN=%s\\n' "$TOKEN" > "$F"; chmod 600 "$F"; for R in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do if [ -e "$R" ]; then grep -q touchworkstation/cli.env "$R" || printf '\\n[ -f ~/.config/touchworkstation/cli.env ] && . ~/.config/touchworkstation/cli.env\\n' >> "$R"; fi; done; export CLAUDE_CODE_OAUTH_TOKEN="$TOKEN"; echo "Signed in - launching Claude Code."; claude; else echo "Could not capture the token automatically. Copy the sk-ant-oat... value shown above, then run:  export CLAUDE_CODE_OAUTH_TOKEN=<token> && claude"; fi`;
+
 export const RUNTIMES = {
   'claude-code': {
     label: 'Claude Code',
     bin: 'claude',
     defaultCommand: 'claude',
-    // claude's default first-run flow expects an OAuth redirect back to a
-    // browser on THIS machine — fine at a desk, but there's no browser open
-    // on Jarvis when you're only ever driving it from a phone, so it hangs
-    // waiting for a callback that can't arrive. `setup-token` is Anthropic's
-    // own escape hatch for exactly this: it prints a URL you complete on ANY
-    // device (your phone), then hands back a token to paste into the
-    // terminal — no local browser or callback needed.
-    loginCommand: 'claude setup-token',
+    loginCommand: CLAUDE_LOGIN,
     installCommand: `${ENSURE_NPM} && npm install -g @anthropic-ai/claude-code`,
     // Where this CLI persists its own credentials once its login flow
     // completes. Existence of any of these is what "already logged in"
@@ -98,7 +108,13 @@ export const RUNTIMES = {
     // Codex" to be turned on once in ChatGPT Settings > Security first, or
     // the code is silently rejected server-side — that's an account
     // setting only the user can flip, not something this app can automate.
-    loginCommand: 'codex login --device-auth',
+    // Prepend a loud reminder of the one-time account setting, because
+    // without it the device code is rejected server-side and codex silently
+    // loops straight back to the login prompt — which reads as "the login
+    // keeps cycling and never sticks" (reported from a real phone). The echo
+    // can't enable the setting for the user, but it makes the actual cause
+    // impossible to miss instead of leaving them guessing.
+    loginCommand: 'echo "==> FIRST enable ChatGPT > Settings > Security > \\"Device code authorization for Codex\\", or the code below will be rejected and login will loop. <=="; echo; codex login --device-auth',
     installCommand: `${ENSURE_NPM} && npm install -g @openai/codex`,
     authPaths: ['.codex/auth.json'],
     supportsModels: false,
