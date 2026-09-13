@@ -75,7 +75,20 @@ export const RUNTIMES = {
     label: 'Codex',
     bin: 'codex',
     defaultCommand: 'codex',
-    loginCommand: 'codex login',   // Codex OAuth flow — prints a URL/code to complete
+    // Plain `codex login` defaults to a localhost OAuth callback — it
+    // opens (via the xdg-open shim) a chatgpt.com/auth.openai.com URL
+    // whose redirect_uri points back at localhost on THIS machine, which a
+    // phone's browser can never reach, so OpenAI rejects the request
+    // outright ("Invalid authorize request" / invalid_authorize_request).
+    // Confirmed live. `--device-auth` is OpenAI's own escape hatch for
+    // exactly this — headless/remote environments — printing a one-time
+    // code to enter at auth.openai.com/codex/device from any device
+    // instead of needing a local callback. Same shape as Claude Code's
+    // `setup-token` fix above. Requires "Device code authorization for
+    // Codex" to be turned on once in ChatGPT Settings > Security first, or
+    // the code is silently rejected server-side — that's an account
+    // setting only the user can flip, not something this app can automate.
+    loginCommand: 'codex login --device-auth',
     installCommand: `${ENSURE_NPM} && npm install -g @openai/codex`,
     supportsModels: false,
     models: [],
