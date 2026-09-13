@@ -764,4 +764,62 @@ html.omarchy-build,html.omarchy-build body,html.omarchy-build #root{background:#
 .omarchy-build .sk-feedback-correct{color:#7ee787;background:rgba(126,231,135,.08);border-color:rgba(126,231,135,.25)}
 .omarchy-build .sk-fav.on{color:#f6b84a}
 .omarchy-build .sk-input-tabs button.on{background:rgba(126,231,135,.12);color:#7ee787}
+
+/* ===== Omarchy Tiled home layout ===== */
+.tiled-dash{min-height:100vh;padding:14px;display:flex;flex-direction:column;gap:10px;font-family:ui-monospace,SFMono-Regular,'JetBrains Mono',Menlo,Consolas,monospace;background:#000}
+.tile-pane{border:1px solid rgba(255,255,255,.16);border-radius:8px;background:#050505;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.tile-pane-head{display:flex;align-items:center;gap:8px;padding:9px 11px;border-bottom:1px solid rgba(255,255,255,.12);color:#c9c9c9;font-size:12px;letter-spacing:.02em}
+.tile-pane-head svg{width:14px;height:14px;color:#7ee787}
+.tile-pane-head span:first-of-type{flex:none}
+.tile-pane-head-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.tile-pane-empty,.tile-pane-error{padding:16px;text-align:center;color:#6b6b6b;font-size:11px}
+.tile-pane-error{color:#ff9aa4}
+.tile-mini-btn{display:inline-flex;align-items:center;gap:4px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.03);color:#c9c9c9;border-radius:6px;padding:4px 8px;font-size:10px}
+.tile-mini-btn svg{width:11px;height:11px}
+.tile-mini-btn:disabled{opacity:.4}
+.tile-status{font-size:10px;color:#6b6b6b;text-transform:uppercase}
+.tile-status.on{color:#7ee787}
+
+.tile-stats{flex:none}
+.tile-stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,.1)}
+.tile-stat{background:#050505;padding:10px;display:flex;flex-direction:column;gap:2px}
+.tile-stat span{font-size:9px;color:#6b6b6b;letter-spacing:.06em}
+.tile-stat strong{font-size:16px;color:#f2f2f2}
+.tile-stat small{font-size:9px;color:#8a8a8a;display:flex;align-items:center;gap:3px}
+.tile-stat small svg{width:9px;height:9px}
+
+.tile-processes{height:220px}
+.tile-proc-table{overflow-y:auto;font-size:10px}
+.tile-proc-row{display:grid;grid-template-columns:50px 70px 46px 46px 1fr;gap:6px;padding:5px 11px;border-bottom:1px solid rgba(255,255,255,.05);color:#c9c9c9;white-space:nowrap;overflow:hidden}
+.tile-proc-row.tile-proc-head{color:#6b6b6b;text-transform:uppercase;font-size:9px;position:sticky;top:0;background:#050505;border-bottom:1px solid rgba(255,255,255,.12)}
+.tile-proc-user,.tile-proc-cmd{overflow:hidden;text-overflow:ellipsis}
+.tile-proc-cmd{color:#7ee787}
+
+.tile-files{height:200px}
+.tile-file-list{overflow-y:auto;display:flex;flex-direction:column}
+.tile-file-row{display:flex;align-items:center;gap:8px;border:0;background:transparent;color:#c9c9c9;padding:7px 11px;text-align:left;font:inherit;font-size:11px;border-bottom:1px solid rgba(255,255,255,.05)}
+.tile-file-row svg{width:13px;height:13px;color:#6b6b6b;flex:none}
+.tile-file-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.tile-editor{height:260px}
+.tile-editor-msg{padding:5px 11px;font-size:10px;color:#7ee787;border-bottom:1px solid rgba(255,255,255,.08)}
+.tile-editor-body{flex:1;min-height:0;display:flex;overflow:hidden}
+.tile-editor-gutter{flex:none;width:34px;overflow:hidden;padding:8px 0;text-align:right;color:#555;font-size:11px;line-height:1.5}
+.tile-editor-gutter div{padding-right:8px}
+.tile-editor-textarea{flex:1;min-width:0;border:0;background:transparent;color:#e2e2e2;resize:none;padding:8px 10px;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;outline:none}
+
+.tile-terminal{height:260px}
+.tile-term-body{flex:1;min-height:0;margin:0;padding:8px 10px;overflow-y:auto;-webkit-overflow-scrolling:touch;font-size:11px;line-height:1.5;color:#d6d6d6;white-space:pre-wrap;word-break:break-word}
+.tile-term-input-row{display:flex;align-items:center;gap:6px;border-top:1px solid rgba(255,255,255,.12);padding:6px 10px}
+.tile-term-input-row span{color:#7ee787}
+.tile-term-input-row input{flex:1;border:0;background:transparent;color:#e2e2e2;font:12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;outline:none}
+
+@media (min-width: 821px){
+  .tiled-dash{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto 260px 1fr;gap:10px;height:100vh}
+  .tile-stats{grid-column:1 / -1}
+  .tile-processes,.tile-editor{height:auto;min-height:0}
+  .tile-files{height:auto;min-height:0}
+  .tile-terminal{height:auto;min-height:0;grid-row:3}
+  .tile-editor{grid-row:3}
+}
 .omarchy-build button:focus-visible,.omarchy-build input:focus-visible{outline-color:rgba(126,231,135,.85)}

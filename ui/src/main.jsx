@@ -19,6 +19,7 @@ import { RemoteAccess } from './RemoteAccess.jsx';
 import { WallpaperPicker } from './WallpaperPicker.jsx';
 import { DockerView } from './DockerView.jsx';
 import { ShortcutTrainer } from './ShortcutTrainer.jsx';
+import TiledDashboard from './TiledDashboard.jsx';
 import './styles.css';
 
 // The Arch/Omarchy package builds with VITE_THEME=minimal (see
@@ -214,7 +215,7 @@ function Router(p){
    case'files':return <Files/>;
    case'terminal':return <TerminalScreen go={p.go} omarchy={p.omarchy} initialSessionId={p.navState?.sessionId} cwd={p.navState?.cwd} pendingCommand={p.navState?.pendingCommand}/>;
    case'settings':return <SettingsView settings={p.settings} setSettings={p.setSettings} go={p.go}/>;
-   default:return p.omarchy ? <MinimalDashboard go={p.go}/> : <Dashboard me={p.me} go={p.go} openProject={p.openProject} settings={p.settings}/>;
+   default:return p.omarchy ? (p.settings?.omarchyLayout==='tiled' ? <TiledDashboard go={p.go}/> : <MinimalDashboard go={p.go}/>) : <Dashboard me={p.me} go={p.go} openProject={p.openProject} settings={p.settings}/>;
  }
 }
 
@@ -656,6 +657,7 @@ function SettingsView({settings,setSettings,go}){const[vpn,setVpn]=useState(null
  <Setting icon={Bot} title="AI Agents" status="Configurable" text="Agents are configured in the Agents screen — choose a runtime, scope it to a project, and set permissions."><Button onClick={()=>setMsg('Open the Agents screen to create and launch agents.')}>Go to Agents</Button></Setting>
  <Setting icon={Palette} title="Appearance" status={themeLabel(settings?.theme)} text="Choose how TouchWorkstation feels. Your choice is saved and applied instantly."><div className="theme-picker">{[['aubergine','Aubergine','aub'],['charcoal','Charcoal','char'],['solar','Solar','sol']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.theme||'aubergine')===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,theme:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({theme:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
  <Setting icon={LayoutGrid} title="Interface" status={variantLabel(settings?.uiVariant)} text="Omarchy replaces the home screen and terminal with a full-black, keyboard-driven layout. This overrides whatever the installed build set by default."><div className="theme-picker">{[['standard','Standard','std'],['omarchy','Omarchy','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.uiVariant?settings.uiVariant:(BUILD_OMARCHY?'omarchy':'standard'))===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,uiVariant:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({uiVariant:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
+ {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&<Setting icon={LayoutGrid} title="Home Layout" status={settings?.omarchyLayout==='tiled'?'Tiled':'Classic'} text="Tiled shows several live, independently-usable panes at once — terminal, files, an editor, processes, and stats — like a real tiling window manager."><div className="theme-picker">{[['classic','Classic','std'],['tiled','Tiled','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.omarchyLayout||'classic')===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,omarchyLayout:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({omarchyLayout:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>}
  <Setting icon={ImageIcon} title="Wallpaper" status="Omarchy home screen" text="Upload and crop a photo for the Omarchy home screen's background.">
   <div className="wp-setting-row">
    <img className="wp-thumb" src={`/wallpaper.jpg?v=${wpVersion}`} alt="" onError={(e)=>{e.currentTarget.style.visibility='hidden'}} onLoad={(e)=>{e.currentTarget.style.visibility='visible'}}/>
