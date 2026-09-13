@@ -805,9 +805,11 @@ html.omarchy-build,html.omarchy-build body,html.omarchy-build #root{background:#
 .tile-agent-row{display:flex;align-items:center;gap:9px;padding:8px 11px;border-bottom:1px solid rgba(255,255,255,.05);color:#d6d6d6;font-size:11px;text-align:left;background:none;border-left:0;border-right:0;border-top:0;font-family:inherit;width:100%}
 .tile-agent-row:last-child{border-bottom:0}
 .tile-agent-row svg{width:15px;height:15px;flex:none;color:#7ee787}
-.tile-agent-copy{flex:1;min-width:0}
-.tile-agent-copy strong{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tile-agent-copy small{display:block;font-size:9.5px;color:#6f6f6f;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile-agent-main{flex:1;min-width:0;background:none;border:0;padding:0;color:inherit;font:inherit;text-align:left}
+.tile-agent-main strong{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile-agent-main small{display:block;font-size:9.5px;color:#6f6f6f;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile-agent-signin{flex:none;border:1px solid rgba(255,255,255,.16);background:none;color:#8a8a8a;border-radius:6px;padding:3px 7px;font-size:9px;font-family:inherit}
+.tile-scope{background:#050505;color:#c9c9c9;border:1px solid rgba(255,255,255,.18);border-radius:6px;font:10px/1 inherit;padding:4px 6px;max-width:120px}
 .tile-agent-state{flex:none;font-size:9px;letter-spacing:.05em;padding:3px 7px;border-radius:999px;border:1px solid rgba(255,255,255,.16);color:#8a8a8a}
 .tile-agent-state.ready{border-color:rgba(126,231,135,.5);color:#7ee787}
 .tile-stats{flex:none}
@@ -853,3 +855,34 @@ html.omarchy-build,html.omarchy-build body,html.omarchy-build #root{background:#
   .tile-processes,.tile-files,.tile-editor,.tile-terminal,.tile-agents{height:auto;min-height:260px}
 }
 .omarchy-build button:focus-visible,.omarchy-build input:focus-visible{outline-color:rgba(126,231,135,.85)}
+
+/* ---- Tiled skin -----------------------------------------------------------
+   Settings > Home Layout > Tiled restyles the ENTIRE app, not just the home
+   screen: same black ground, monospace type and green accents the tiled panes
+   use. Written as variable overrides plus a small number of surface rules, so
+   it rides on the existing design tokens instead of restating every component.
+   Scoped to <html class="tiled-skin"> (see main.jsx). */
+.tiled-skin{
+  --bg:#000;--bg2:#050505;--panel:#050505;--panel2:#0a0a0a;--panel3:#101010;
+  --line:rgba(255,255,255,.10);--line2:rgba(255,255,255,.18);
+  --text:#e6e6e6;--muted:#8a8a8a;--faint:#6a6a6a;
+  --accent:#7ee787;--accent2:#1f6f3a;--accent3:#0d2f18;--radius:8px;
+  --shadow:0 10px 30px rgba(0,0,0,.6);
+  font-family:ui-monospace,SFMono-Regular,'JetBrains Mono',Menlo,Consolas,monospace;
+}
+.tiled-skin body,.tiled-skin #root,.tiled-skin html{background:#000}
+.tiled-skin .kicker{color:var(--accent);letter-spacing:.14em}
+.tiled-skin .sidebar,.tiled-skin .topbar,.tiled-skin .mobile-dock,.tiled-skin .mobile-sheet{
+  background:#050505;border-color:var(--line)}
+/* Squarer, flatter surfaces — the tiled panes' look, applied to every card. */
+.tiled-skin .card,.tiled-skin .setting-row,.tiled-skin .file-row,.tiled-skin .home-tile-row,
+.tiled-skin .launcher,.tiled-skin .project-card,.tiled-skin .agent-card,.tiled-skin .clipboard-card,
+.tiled-skin .docker-card,.tiled-skin .runtime-chip{
+  background:#050505;border-radius:8px;border-color:var(--line)}
+.tiled-skin .btn,.tiled-skin button.btn,.tiled-skin .theme-opt{border-radius:7px}
+.tiled-skin .btn.primary{background:var(--accent2);border-color:var(--accent);color:#eafff0}
+.tiled-skin .pill,.tiled-skin .badge{border-radius:999px;border-color:var(--line2)}
+.tiled-skin code,.tiled-skin pre{background:#0a0a0a;color:#c8f7d0;border-radius:6px}
+.tiled-skin .setting-icon{background:rgba(126,231,135,.10);color:var(--accent);border-radius:8px}
+.tiled-skin h1,.tiled-skin h2,.tiled-skin h3,.tiled-skin strong{letter-spacing:.01em}
+.tiled-skin a,.tiled-skin .link{color:var(--accent)}

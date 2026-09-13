@@ -20,12 +20,18 @@ export function mountAgentRoutes(app, { auth, HOME, stateDir, paneCommand }) {
   // resumes the same conversation instead of starting a new one.
   app.post('/api/agents/runtimes/:runtime/open', auth, async (req, res) => {
     const id = req.params.runtime;
+    const body = req.body || {};
+    // Only ever a directory the user already picked from their own workspace
+    // list; resolveOpen just slugs it into a session name.
+    const cwd = typeof body.cwd === 'string' && body.cwd ? body.cwd : null;
+    const opts = { login: !!body.login, cwd };
+    const probe = resolveOpen(id, '', opts);
+    if (!probe) return res.status(404).json({ error: 'Unknown runtime' });
     let running = '';
-    try { running = paneCommand ? await paneCommand(`cli-${id}`) : ''; } catch { running = ''; }
-    const r = resolveOpen(id, running);
-    if (!r) return res.status(404).json({ error: 'Unknown runtime' });
-    if (r.action === 'unavailable') return res.status(400).json({ error: `${r.label} has no installer available.` });
-    res.json({ ...r, cwd: HOME });
+    try { running = paneCommand ? await paneCommand(probe.sessionId) : ''; } catch { running = ''; }
+    const r = resolveOpen(id, running, opts);
+    if (r.action === 'unavailable') return res.status(400).json({ error: r.error || `${r.label} has no installer available.` });
+    res.json({ ...r, cwd: r.cwd || HOME });
   });
 
   // Available runtimes + whether each is installed on this machine.

@@ -19,7 +19,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Cpu, Upload, Download, Folder, FileText, Save, TerminalSquare, ChevronUp,
   Code2, GitBranch, Box, Sparkles, ClipboardList, Keyboard, Settings as SettingsIcon,
-  Bot,
+  Bot, House,
 } from 'lucide-react';
 import { api, usePoll } from './main.jsx';
 
@@ -28,6 +28,7 @@ import { api, usePoll } from './main.jsx';
 // out. MinimalDashboard is itself a destination list so it never needed one;
 // the tiled layout is all panes, which left it with no navigation at all.
 const NAV_TARGETS = [
+  { id: 'home', label: 'Home', icon: House },
   { id: 'terminal', label: 'Terminal', icon: TerminalSquare },
   { id: 'projects', label: 'Projects', icon: Code2 },
   { id: 'files', label: 'Files', icon: Folder },
@@ -104,22 +105,26 @@ const CLI_IDS = ['claude-code', 'codex', 'antigravity'];
 
 function AgentCliPane({ go }) {
   const [runtimes, setRuntimes] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [scope, setScope] = useState(''); // '' = home, otherwise a project path
   const [msg, setMsg] = useState('');
 
-  async function load() {
-    try { const r = await api('/agents/runtimes'); setRuntimes(r.runtimes || []); }
-    catch { setRuntimes([]); }
-  }
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    api('/agents/runtimes').then((r) => setRuntimes(r.runtimes || [])).catch(() => setRuntimes([]));
+    api('/projects').then((r) => setProjects(r.projects || [])).catch(() => setProjects([]));
+  }, []);
 
-  // The server decides install vs login vs launch vs reattach in one place
+  // The server decides install vs launch vs reattach in one place
   // (resolveOpen in server/agents.js) — the client just carries out whatever
   // it says. `attach` deliberately sends no command: the CLI is already
   // sitting in its own session, so re-sending one would type into its prompt.
-  async function run(rt) {
+  async function run(rt, login) {
     setMsg('');
     try {
-      const r = await api(`/agents/runtimes/${rt.id}/open`, { method: 'POST', body: '{}' });
+      const r = await api(`/agents/runtimes/${rt.id}/open`, {
+        method: 'POST',
+        body: JSON.stringify({ login: !!login, cwd: scope || undefined }),
+      });
       go?.('terminal', {
         sessionId: r.sessionId,
         cwd: r.cwd,
@@ -129,24 +134,38 @@ function AgentCliPane({ go }) {
   }
 
   const list = (runtimes || []).filter((r) => CLI_IDS.includes(r.id));
-  const stateOf = (rt) => (!rt.installed ? 'install' : !rt.loggedIn ? 'log in' : 'open');
-  const hintOf = (rt) => (!rt.installed ? 'Tap to install' : !rt.loggedIn ? 'Tap to sign in once' : `Resume ${rt.defaultCommand}`);
+  const scopeName = scope ? (projects.find((p) => p.path === scope)?.name || scope.split('/').pop()) : 'Home';
 
   return (
-    <Pane icon={Bot} title="AI CLIs" className="tile-agents">
+    <Pane
+      icon={Bot}
+      title="AI CLIs"
+      className="tile-agents"
+      right={projects.length > 0 && (
+        // Which directory the CLI opens in, so a signed-in agent can actually
+        // work on a project instead of always starting in the home folder.
+        <select className="tile-scope" value={scope} onChange={(e) => setScope(e.target.value)}>
+          <option value="">Home</option>
+          {projects.map((p) => <option key={p.path} value={p.path}>{p.name}</option>)}
+        </select>
+      )}
+    >
       {msg && <div className="tile-pane-error">{msg}</div>}
       <div className="tile-agents-list">
         {list.map((rt) => (
-          <button key={rt.id} className="tile-agent-row" onClick={() => run(rt)}>
+          <div key={rt.id} className="tile-agent-row">
             <Bot />
-            <div className="tile-agent-copy">
+            <button className="tile-agent-main" onClick={() => run(rt)}>
               <strong>{rt.label}</strong>
-              <small>{hintOf(rt)}</small>
-            </div>
-            <span className={'tile-agent-state' + (rt.installed && rt.loggedIn ? ' ready' : '')}>
-              {stateOf(rt)}
+              <small>{rt.installed ? `Open in ${scopeName}` : 'Tap to install, then it opens'}</small>
+            </button>
+            {rt.installed && rt.canLogin && (
+              <button className="tile-agent-signin" onClick={() => run(rt, true)} title={`Sign in to ${rt.label}`}>sign in</button>
+            )}
+            <span className={'tile-agent-state' + (rt.installed ? ' ready' : '')}>
+              {rt.installed ? 'open' : 'install'}
             </span>
-          </button>
+          </div>
         ))}
         {runtimes && !list.length && <div className="tile-pane-empty">No CLI runtimes found.</div>}
         {!runtimes && <div className="tile-pane-empty">Loading…</div>}

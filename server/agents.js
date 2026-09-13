@@ -198,9 +198,17 @@ function binOnPath(bin) {
   return found;
 }
 
-// Has this CLI's own login flow already been completed on this machine?
-// Runtimes with no authPaths (Ollama — purely local) are always "logged in"
-// so they never get sent through a login step that doesn't exist.
+// Best-effort "does a credential file exist" hint, used ONLY for the badge
+// text in the UI. It is deliberately NOT allowed to gate launching.
+//
+// Credential detection cannot be made reliable: Claude Code stores its token
+// in the OS keychain on some platforms (a fully authenticated machine can
+// have no ~/.claude/.credentials.json at all — confirmed), and the headless
+// `claude setup-token` flow we use writes nothing predictable either. Gating
+// launch on this is what caused "I signed in but it still shows the login
+// step". The CLI itself is the only thing that actually knows whether it's
+// authenticated, and every one of these prompts on its own when it isn't —
+// so launching unconditionally is both simpler and strictly more correct.
 export function runtimeLoggedIn(id) {
   const r = RUNTIMES[id];
   if (!r) return false;
@@ -228,29 +236,42 @@ export function runtimeLoggedIn(id) {
 // If the CLI is already sitting in there, we attach and send NOTHING —
 // re-sending the launch command would type "claude" into a Claude prompt
 // that's already open, which is exactly the "it just runs it again" bug.
-export function resolveOpen(runtimeId, runningCommand) {
+//
+// `opts.login` forces the runtime's own login command instead of launching —
+// the explicit "Sign in again" action, for re-auth. Nothing else ever routes
+// through login: see runtimeLoggedIn above for why auto-detecting it was
+// wrong. `opts.cwd` launches the CLI inside a workspace so it can work on
+// that project, each workspace getting its own session.
+export function resolveOpen(runtimeId, runningCommand, opts = {}) {
   const r = RUNTIMES[runtimeId];
   if (!r) return null;
-  const sessionId = `cli-${runtimeId}`;
+  // A workspace-scoped launch is its own session, so several projects can
+  // each have a live CLI without one stealing another's conversation.
+  const slug = opts.cwd ? '-' + String(opts.cwd).replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(-24) : '';
+  const sessionId = `cli-${runtimeId}${slug}`;
+  if (opts.login) {
+    if (!r.loginCommand) return { action: 'unavailable', sessionId, label: r.label, error: `${r.label} has no separate login step — just open it.` };
+    return { action: 'login', command: r.loginCommand, sessionId, label: r.label, cwd: opts.cwd };
+  }
   // Checked FIRST, ahead of the install test: something already running in
   // this CLI's own session is proof enough that it's usable, and trusting
   // that over PATH detection is what stops a stale "not installed" reading
   // from re-running the installer on top of a CLI that is already open.
   const SHELLS = new Set(['bash', 'sh', 'zsh', 'fish', 'dash']);
   if (runningCommand && !SHELLS.has(runningCommand)) {
-    return { action: 'attach', sessionId, label: r.label };
+    return { action: 'attach', sessionId, label: r.label, cwd: opts.cwd };
   }
   if (!binOnPath(r.bin)) {
     if (!r.installCommand) return { action: 'unavailable', sessionId, label: r.label };
-    return { action: 'install', command: r.installCommand, sessionId, label: r.label };
+    // Chained so a single tap installs AND drops straight into the CLI,
+    // rather than installing and leaving the user at a bare shell wondering
+    // whether it worked.
+    return { action: 'install', command: `${r.installCommand} && ${r.defaultCommand}`, sessionId, label: r.label, cwd: opts.cwd };
   }
-  if (!runtimeLoggedIn(runtimeId)) {
-    // Antigravity has no separate login subcommand — running it is the login
-    // flow (it prints a sign-in URL + code on first run), so fall through to
-    // its normal command rather than inventing one.
-    return { action: 'login', command: r.loginCommand || r.defaultCommand, sessionId, label: r.label };
-  }
-  return { action: 'launch', command: r.defaultCommand, sessionId, label: r.label };
+  // No login gate here on purpose. Every one of these CLIs starts its own
+  // auth flow when it needs to, so launching is always the right move and
+  // never strands an already-signed-in user on a login screen.
+  return { action: 'launch', command: r.defaultCommand, sessionId, label: r.label, cwd: opts.cwd };
 }
 
 export function runtimeStatus() {
