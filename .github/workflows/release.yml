@@ -26,6 +26,7 @@ jobs:
   # ---------------------------------------------------------------------
   build-deb-rpm:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -105,6 +106,7 @@ jobs:
   build-arch:
     runs-on: ubuntu-latest
     container: archlinux:latest
+    timeout-minutes: 15
     steps:
       - name: Install build tools
         run: |
@@ -149,6 +151,7 @@ jobs:
   smoke-deb:
     runs-on: ubuntu-latest
     needs: build-deb-rpm
+    timeout-minutes: 8
     steps:
       - uses: actions/download-artifact@v4
         with: { name: deb-package, path: dist }
@@ -178,6 +181,7 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux:latest
     needs: build-arch
+    timeout-minutes: 8
     steps:
       - uses: actions/download-artifact@v4
         with: { name: arch-package, path: dist }
@@ -215,6 +219,7 @@ jobs:
     runs-on: ubuntu-latest
     container: fedora:40
     needs: build-deb-rpm
+    timeout-minutes: 8
     steps:
       - uses: actions/download-artifact@v4
         with: { name: rpm-package, path: dist }
@@ -222,6 +227,20 @@ jobs:
         run: |
           set -euo pipefail
           dnf install -y sudo shadow-utils procps-ng curl >/dev/null
+          # %post installs nginx/gcc/gh itself if any are missing (a bare
+          # fedora:40 container has none of them) — via a NESTED dnf
+          # transaction run from inside this one's own scriptlet. dnf can
+          # hang indefinitely waiting on its own lock in that situation:
+          # confirmed live, the previous attempt sat frozen for 16+ minutes
+          # at exactly this step with zero output before being force-
+          # cancelled. Pre-installing all three here first, as their own
+          # separate transaction that fully finishes before the real
+          # package install starts, lets %post's own `command -v ... ||
+          # ...` guards find them already present and skip the nested
+          # calls entirely.
+          dnf install -y dnf-plugins-core nginx gcc gcc-c++ make python3 >/dev/null
+          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          dnf install -y gh >/dev/null
           # %post's own user-detection (`getent passwd` for a uid>=1000
           # account) needs someone to find, and needs to find them BEFORE
           # dnf runs %post as part of this same install.
@@ -246,6 +265,7 @@ jobs:
   # ---------------------------------------------------------------------
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     needs: [smoke-deb, smoke-arch, smoke-rpm]
     steps:
       - uses: actions/download-artifact@v4
