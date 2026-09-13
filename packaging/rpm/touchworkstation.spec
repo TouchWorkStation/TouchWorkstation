@@ -4,7 +4,7 @@ Release:        1%{?dist}
 Summary:        Ubuntu mobile workstation and developer control center
 License:        Proprietary
 URL:            https://touchworkstation.com
-Source0:        touchworkstation-1.0.0.tar.gz
+Source0:        %{name}-%{version}.tar.gz
 BuildArch:      x86_64
 AutoReqProv:    no
 
