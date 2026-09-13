@@ -132,6 +132,23 @@
 .af-check svg{width:13px;height:13px}
 .agent-form-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:22px;max-width:640px}
 @media(max-width:820px){.agent-grid{grid-template-columns:1fr}.agent-form,.agent-form-actions{max-width:none}.af-perms{grid-template-columns:1fr}}
+/* Agent setup walkthrough */
+.aw-steps{display:flex;gap:7px;margin:0 0 18px}
+.aw-dot{width:26px;height:4px;border-radius:99px;background:var(--line2)}
+.aw-dot.on{background:var(--accent)}
+.aw-dot.done{background:var(--accent2)}
+.aw-body{max-width:640px;display:flex;flex-direction:column;gap:14px}
+.aw-ws-list{display:flex;flex-direction:column;gap:8px}
+.aw-ws{display:flex;align-items:center;gap:12px;border:1px solid var(--line);background:rgba(255,255,255,.02);border-radius:12px;padding:12px 14px;color:var(--text);text-align:left;width:100%}
+.aw-ws.active{border-color:var(--accent);background:rgba(233,84,32,.06)}
+.aw-ws svg{width:20px;height:20px;color:var(--muted);flex:none}
+.aw-ws.active svg{color:var(--accent)}
+.aw-ws>div{flex:1;min-width:0}
+.aw-ws strong{display:block;font-size:14px}
+.aw-ws small{display:block;font-size:11px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aw-review{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:rgba(255,255,255,.02)}
+.aw-review>div{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text)}
+.aw-review svg{width:16px;height:16px;color:var(--accent);flex:none}
 
 /* ===== runtime chip actions ===== */
 .runtime-chip{min-width:130px}
