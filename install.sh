@@ -68,6 +68,25 @@ install_asset() {
   printf '%s\n' "$file"
 }
 
+# pacman refuses to run while its database is locked, and its own error
+# ("could not lock database: File exists") reads like corruption and invites
+# people to delete the lock while a real package manager is mid-transaction,
+# which genuinely can break the system. Detect it BEFORE downloading anything
+# and say which of the two situations this is, since the safe answer differs.
+check_pacman_lock() {
+  [ -e /var/lib/pacman/db.lck ] || return 0
+  holder="$(pgrep -a 'pacman|pamac|yay|paru|pikaur|octopi' 2>/dev/null || true)"
+  if [ -n "$holder" ]; then
+    die "Another package manager is running, so pacman can't start:
+$holder
+Wait for it to finish, then run this installer again."
+  fi
+  die "pacman's database is locked (/var/lib/pacman/db.lck) but nothing appears to be running — usually a leftover from an update that was interrupted.
+Double-check nothing is running:  pgrep -a pacman pamac yay paru
+If that prints nothing, clear it:  sudo rm /var/lib/pacman/db.lck
+Then run this installer again."
+}
+
 main() {
   fetch_release_json
 
@@ -94,6 +113,7 @@ main() {
 
   elif command -v pacman >/dev/null 2>&1; then
     log "Detected an Arch-based system — installing the pre-built package."
+    check_pacman_lock
     url="$(pick_asset_url '\.pkg\.tar\.zst')"
     pkg="$(install_asset "$url")"
     need_sudo pacman -U --noconfirm "$pkg"
