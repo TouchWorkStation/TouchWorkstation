@@ -26,6 +26,7 @@ jobs:
   # ---------------------------------------------------------------------
   build-deb-rpm:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -105,6 +106,7 @@ jobs:
   build-arch:
     runs-on: ubuntu-latest
     container: archlinux:latest
+    timeout-minutes: 15
     steps:
       - name: Install build tools
         run: |
@@ -120,7 +122,14 @@ jobs:
           # build source (this is a -git package) — HEAD of the default
           # branch at clone time, which is this exact tagged commit
           # immediately after a release tag is cut from it.
-          sudo -u builder bash -c 'cd "$GITHUB_WORKSPACE/packaging/arch" && makepkg --noconfirm -s'
+          #
+          # ARCH_DIR is expanded HERE, in this root shell, before sudo runs —
+          # sudo does not preserve the caller's environment by default, so a
+          # single-quoted command relying on $GITHUB_WORKSPACE surviving into
+          # the builder user's shell silently expanded to empty and failed
+          # with "cd: /packaging/arch: No such file or directory".
+          ARCH_DIR="$GITHUB_WORKSPACE/packaging/arch"
+          sudo -u builder bash -c "cd '$ARCH_DIR' && makepkg --noconfirm -s"
       - run: mkdir -p dist && cp packaging/arch/*.pkg.tar.zst dist/
       - uses: actions/upload-artifact@v4
         with:
@@ -142,6 +151,7 @@ jobs:
   smoke-deb:
     runs-on: ubuntu-latest
     needs: build-deb-rpm
+    timeout-minutes: 8
     steps:
       - uses: actions/download-artifact@v4
         with: { name: deb-package, path: dist }
@@ -152,7 +162,12 @@ jobs:
           for i in $(seq 1 60); do systemctl is-active --quiet touchworkstation && break; sleep 1; done
           systemctl is-active --quiet touchworkstation || { journalctl -u touchworkstation --no-pager -n 200; exit 1; }
           jar="$RUNNER_TEMP/cookies.txt"
-          PW=$(grep '^APP_PASSWORD=' /etc/touchworkstation/touchworkstation.env | cut -d= -f2-)
+          # The env file is root:<app-group> mode 660 by design (postinst
+          # picks whichever uid>=1000 account it finds first as the "app
+          # user" — not necessarily this job's own runner account) — sudo,
+          # not a plain read, is the only thing that works regardless of
+          # which account postinst happened to pick.
+          PW=$(sudo grep '^APP_PASSWORD=' /etc/touchworkstation/touchworkstation.env | cut -d= -f2-)
           curl -sf -c "$jar" -X POST http://127.0.0.1:8787/api/login -H 'Content-Type: application/json' -d "{\"password\":\"$PW\"}" | grep -q '"mustChangePassword":true'
           curl -sf -b "$jar" http://127.0.0.1:8787/api/me | grep -q '"mustChangePassword":true'
           curl -sf -b "$jar" -X POST http://127.0.0.1:8787/api/change-password -H 'Content-Type: application/json' -d "{\"currentPassword\":\"$PW\",\"newPassword\":\"a-new-password-123\"}" | grep -q '"ok":true'
@@ -166,13 +181,14 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux:latest
     needs: build-arch
+    timeout-minutes: 8
     steps:
       - uses: actions/download-artifact@v4
         with: { name: arch-package, path: dist }
       - name: Install and verify first-login password flow
         run: |
           set -euo pipefail
-          pacman -Sy --noconfirm --needed nodejs npm nginx git tmux github-cli openssl procps-ng iproute2 psmisc curl grep
+          pacman -Sy --noconfirm --needed nodejs npm nginx git tmux github-cli openssl procps-ng iproute2 psmisc curl grep sudo
           useradd -m testuser
           pacman -U --noconfirm dist/*.pkg.tar.zst
           test -f /etc/touchworkstation/touchworkstation.env
@@ -189,38 +205,59 @@ jobs:
           echo "arch install + first-login password flow verified"
 
   # RPM's %post unconditionally calls `systemctl enable --now` (unlike the
-  # .deb/Arch equivalents, which guard or skip it), so this one genuinely
-  # needs real systemd as PID 1 — not available in a plain `container:`
-  # job (Actions overrides the entrypoint to keep it alive for steps), so
-  # this orchestrates its own privileged container via plain docker
-  # commands instead. This is the newest, least-proven part of this
-  # workflow — watch it closely on the first real run.
+  # .deb/Arch equivalents, which guard or skip it) — the official `fedora`
+  # Docker image has no systemd/init at all (confirmed: `/usr/sbin/init`
+  # doesn't exist in it, a real "systemd inside Docker" setup needs a
+  # purpose-built image this workflow shouldn't take an external dependency
+  # on), so that systemctl call is guaranteed to fail here no matter what.
+  # Tolerated with `|| true` — by the time it runs, %post has already
+  # written the env file and finished the npm install/build (verified
+  # directly below), so the failure is purely "no systemd in this
+  # container" and not a real install problem. Same manual-start pattern
+  # smoke-arch already uses successfully.
   smoke-rpm:
     runs-on: ubuntu-latest
+    container: fedora:40
     needs: build-deb-rpm
+    timeout-minutes: 8
     steps:
       - uses: actions/download-artifact@v4
         with: { name: rpm-package, path: dist }
-      - name: Boot a real systemd inside Fedora and install
+      - name: Install and verify first-login password flow
         run: |
           set -euo pipefail
-          docker run -d --name rpmtest --privileged --cgroupns=host \
-            -v /sys/fs/cgroup:/sys/fs/cgroup:rw fedora:40 /usr/sbin/init
-          docker cp dist/. rpmtest:/tmp/
-          docker exec rpmtest bash -c 'dnf install -y /tmp/*.rpm'
-          docker exec rpmtest bash -c 'for i in $(seq 1 60); do systemctl is-active --quiet touchworkstation && break; sleep 1; done'
-          docker exec rpmtest systemctl is-active --quiet touchworkstation || { docker exec rpmtest journalctl -u touchworkstation --no-pager -n 200; exit 1; }
-          docker exec rpmtest bash -c '
-            set -euo pipefail
-            jar=/tmp/cookies.txt
-            PW=$(grep "^APP_PASSWORD=" /etc/touchworkstation/touchworkstation.env | cut -d= -f2-)
-            curl -sf -c "$jar" -X POST http://127.0.0.1:8787/api/login -H "Content-Type: application/json" -d "{\"password\":\"$PW\"}" | grep -q "\"mustChangePassword\":true"
-            curl -sf -b "$jar" -X POST http://127.0.0.1:8787/api/change-password -H "Content-Type: application/json" -d "{\"currentPassword\":\"$PW\",\"newPassword\":\"a-new-password-123\"}" | grep -q "\"ok\":true"
-            curl -sf -b "$jar" http://127.0.0.1:8787/api/me | grep -q "\"mustChangePassword\":false"
-          '
+          dnf install -y sudo shadow-utils procps-ng curl >/dev/null
+          # %post installs nginx/gcc/gh itself if any are missing (a bare
+          # fedora:40 container has none of them) — via a NESTED dnf
+          # transaction run from inside this one's own scriptlet. dnf can
+          # hang indefinitely waiting on its own lock in that situation:
+          # confirmed live, the previous attempt sat frozen for 16+ minutes
+          # at exactly this step with zero output before being force-
+          # cancelled. Pre-installing all three here first, as their own
+          # separate transaction that fully finishes before the real
+          # package install starts, lets %post's own `command -v ... ||
+          # ...` guards find them already present and skip the nested
+          # calls entirely.
+          dnf install -y dnf-plugins-core nginx gcc gcc-c++ make python3 >/dev/null
+          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          dnf install -y gh >/dev/null
+          # %post's own user-detection (`getent passwd` for a uid>=1000
+          # account) needs someone to find, and needs to find them BEFORE
+          # dnf runs %post as part of this same install.
+          useradd -m testuser
+          dnf install -y dist/*.rpm || true
+          test -f /etc/touchworkstation/touchworkstation.env
+          [ "$(stat -c %a /etc/touchworkstation/touchworkstation.env)" = "660" ] || { echo "env file has wrong permissions"; exit 1; }
+          grep -q '^PW_MUST_CHANGE=1' /etc/touchworkstation/touchworkstation.env
+          set -a; source /etc/touchworkstation/touchworkstation.env; set +a
+          sudo -u testuser env $(cat /etc/touchworkstation/touchworkstation.env | xargs) \
+            bash -c 'cd /opt/touchworkstation/app && /opt/touchworkstation/runtime/bin/node server/index.js &'
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8787/api/me >/dev/null 2>&1 && break; sleep 1; done
+          jar=/tmp/cookies.txt
+          curl -sf -c "$jar" -X POST http://127.0.0.1:8787/api/login -H 'Content-Type: application/json' -d "{\"password\":\"$APP_PASSWORD\"}" | grep -q '"mustChangePassword":true'
+          curl -sf -b "$jar" -X POST http://127.0.0.1:8787/api/change-password -H 'Content-Type: application/json' -d "{\"currentPassword\":\"$APP_PASSWORD\",\"newPassword\":\"a-new-password-123\"}" | grep -q '"ok":true'
+          curl -sf -b "$jar" http://127.0.0.1:8787/api/me | grep -q '"mustChangePassword":false'
           echo "rpm install + first-login password flow verified"
-      - if: always()
-        run: docker rm -f rpmtest || true
 
   # ---------------------------------------------------------------------
   # One release, all three assets — only once every install has been
@@ -228,6 +265,7 @@ jobs:
   # ---------------------------------------------------------------------
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     needs: [smoke-deb, smoke-arch, smoke-rpm]
     steps:
       - uses: actions/download-artifact@v4
