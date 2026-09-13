@@ -34,6 +34,13 @@ import './styles.css';
 // settings, with this constant as the fallback before settings load / for
 // distros that never touch it.
 const BUILD_OMARCHY=import.meta.env.VITE_THEME==='minimal';
+// Omarchy defaults to the tiled layout — it IS the Omarchy look, so landing
+// on the classic list first made the tiled dashboard something you had to go
+// find in Settings. Only an explicit saved choice moves off it, so a user who
+// picks Classic keeps Classic. Read through this helper everywhere rather than
+// comparing to 'tiled' inline, so the default can't drift between the places
+// that decide the layout, the app-wide skin, and the Settings picker.
+export function omarchyLayoutOf(settings){return settings?.omarchyLayout||'tiled'}
 
 const API='/api';
 export async function api(path,opts={}){
@@ -100,7 +107,7 @@ function App(){
  // Tiled isn't only a home-screen layout — picking it restyles the whole app
  // to match (black ground, mono type, green accents), so moving off the home
  // screen doesn't drop you back into the purple standard chrome mid-session.
- const tiledSkin=omarchy&&settings?.omarchyLayout==='tiled';
+ const tiledSkin=omarchy&&omarchyLayoutOf(settings)==='tiled';
  useEffect(()=>{document.documentElement.classList.toggle('tiled-skin',tiledSkin)},[tiledSkin]);
  if(loading)return <Splash/>;
  if(!me)return <Login onDone={async(pw)=>{setLoginPw(pw);setMe(await api('/me'));setSettings(await api('/settings'))}}/>;
@@ -235,7 +242,7 @@ function Router(p){
    case'files':return <Files/>;
    case'terminal':return <TerminalScreen go={p.go} omarchy={p.omarchy} initialSessionId={p.navState?.sessionId} cwd={p.navState?.cwd} pendingCommand={p.navState?.pendingCommand}/>;
    case'settings':return <SettingsView settings={p.settings} setSettings={p.setSettings} go={p.go}/>;
-   default:return p.omarchy ? (p.settings?.omarchyLayout==='tiled' ? <TiledDashboard go={p.go} settings={p.settings}/> : <MinimalDashboard go={p.go}/>) : <Dashboard me={p.me} go={p.go} openProject={p.openProject} settings={p.settings}/>;
+   default:return p.omarchy ? (omarchyLayoutOf(p.settings)==='tiled' ? <TiledDashboard go={p.go} settings={p.settings}/> : <MinimalDashboard go={p.go}/>) : <Dashboard me={p.me} go={p.go} openProject={p.openProject} settings={p.settings}/>;
  }
 }
 
@@ -702,8 +709,8 @@ function SettingsView({settings,setSettings,go}){const[vpn,setVpn]=useState(null
  <Setting icon={Bot} title="AI Agents" status="Configurable" text="Agents are configured in the Agents screen — choose a runtime, scope it to a project, and set permissions."><Button onClick={()=>setMsg('Open the Agents screen to create and launch agents.')}>Go to Agents</Button></Setting>
  <Setting icon={Palette} title="Appearance" status={themeLabel(settings?.theme)} text="Choose how TouchWorkstation feels. Your choice is saved and applied instantly."><div className="theme-picker">{[['aubergine','Aubergine','aub'],['charcoal','Charcoal','char'],['solar','Solar','sol']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.theme||'aubergine')===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,theme:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({theme:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
  <Setting icon={LayoutGrid} title="Interface" status={variantLabel(settings?.uiVariant)} text="Omarchy replaces the home screen and terminal with a full-black, keyboard-driven layout. This overrides whatever the installed build set by default."><div className="theme-picker">{[['standard','Standard','std'],['omarchy','Omarchy','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.uiVariant?settings.uiVariant:(BUILD_OMARCHY?'omarchy':'standard'))===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,uiVariant:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({uiVariant:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
- {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&<Setting icon={LayoutGrid} title="Home Layout" status={settings?.omarchyLayout==='tiled'?'Tiled':'Classic'} text="Tiled shows several live, independently-usable panes at once — terminal, files, an editor, processes, and stats — like a real tiling window manager."><div className="theme-picker">{[['classic','Classic','std'],['tiled','Tiled','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.omarchyLayout||'classic')===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,omarchyLayout:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({omarchyLayout:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>}
- {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&settings?.omarchyLayout==='tiled'&&<Setting icon={LayoutGrid} title="Tiled panes" status={`${(settings?.tiledPanes?.length?settings.tiledPanes:DEFAULT_TILED_PANES).length} shown`} text="Choose which panes appear on the tiled home screen. Turn off the ones you don't use to give the rest more room."><TiledPaneSettings settings={settings} setSettings={setSettings}/></Setting>}
+ {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&<Setting icon={LayoutGrid} title="Home Layout" status={omarchyLayoutOf(settings)==='tiled'?'Tiled':'Classic'} text="Tiled shows several live, independently-usable panes at once — terminal, files, an editor, processes, and stats — like a real tiling window manager."><div className="theme-picker">{[['classic','Classic','std'],['tiled','Tiled','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+(omarchyLayoutOf(settings)===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,omarchyLayout:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({omarchyLayout:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>}
+ {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&omarchyLayoutOf(settings)==='tiled'&&<Setting icon={LayoutGrid} title="Tiled panes" status={`${(settings?.tiledPanes?.length?settings.tiledPanes:DEFAULT_TILED_PANES).length} shown`} text="Choose which panes appear on the tiled home screen. Turn off the ones you don't use to give the rest more room."><TiledPaneSettings settings={settings} setSettings={setSettings}/></Setting>}
  <Setting icon={ImageIcon} title="Wallpaper" status="Omarchy home screen" text="Upload and crop a photo for the Omarchy home screen's background.">
   <div className="wp-setting-row">
    <img className="wp-thumb" src={`/wallpaper.jpg?v=${wpVersion}`} alt="" onError={(e)=>{e.currentTarget.style.visibility='hidden'}} onLoad={(e)=>{e.currentTarget.style.visibility='visible'}}/>
