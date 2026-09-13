@@ -18,8 +18,40 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Cpu, Upload, Download, Folder, FileText, Save, TerminalSquare, ChevronUp,
+  Code2, GitBranch, Box, Sparkles, ClipboardList, Keyboard, Settings as SettingsIcon,
+  Bot,
 } from 'lucide-react';
 import { api, usePoll } from './main.jsx';
+
+// The Omarchy home is rendered "bare" (no topbar, no dock — see Shell in
+// main.jsx), so unlike every other screen this one has to carry its own way
+// out. MinimalDashboard is itself a destination list so it never needed one;
+// the tiled layout is all panes, which left it with no navigation at all.
+const NAV_TARGETS = [
+  { id: 'terminal', label: 'Terminal', icon: TerminalSquare },
+  { id: 'projects', label: 'Projects', icon: Code2 },
+  { id: 'files', label: 'Files', icon: Folder },
+  { id: 'projects', label: 'GitHub', icon: GitBranch },
+  { id: 'docker', label: 'Containers', icon: Box },
+  { id: 'agents', label: 'Agents', icon: Sparkles },
+  { id: 'clipboard', label: 'Clipboard', icon: ClipboardList },
+  { id: 'shortcuts', label: 'Shortcuts', icon: Keyboard },
+  { id: 'settings', label: 'Settings', icon: SettingsIcon },
+];
+
+// Which panes exist, and the order they render in by default. Exported so
+// Settings can build its picker from the same list rather than duplicating
+// the names — same single-source-of-truth shape HomeTiles.jsx uses for the
+// standard home screen's tiles.
+export const TILED_PANES = [
+  { id: 'stats', name: 'System', description: 'CPU, memory, disk and network' },
+  { id: 'agents', name: 'AI CLIs', description: 'Claude Code, Codex, Antigravity' },
+  { id: 'processes', name: 'Processes', description: 'Live top process list' },
+  { id: 'files', name: 'Files', description: 'Browse and open files' },
+  { id: 'editor', name: 'Editor', description: 'Edit the file you opened' },
+  { id: 'terminal', name: 'Terminal', description: 'A live shell in a tile' },
+];
+export const DEFAULT_TILED_PANES = ['stats', 'agents', 'processes', 'files', 'editor', 'terminal'];
 
 function fmtRate(bytesPerSec) {
   if (!bytesPerSec || bytesPerSec < 1024) return `${(bytesPerSec || 0).toFixed(0)} B/s`;
@@ -28,16 +60,98 @@ function fmtRate(bytesPerSec) {
   return `${(bytesPerSec / 1024).toFixed(0)} KB/s`;
 }
 
-export default function TiledDashboard() {
+export default function TiledDashboard({ go, settings }) {
   const [openFile, setOpenFile] = useState(null);
+  const enabled = settings?.tiledPanes?.length ? settings.tiledPanes : DEFAULT_TILED_PANES;
+  // Unknown ids (a pane removed in a later version, a stale saved config)
+  // are dropped rather than rendered as a blank hole.
+  const panes = {
+    stats: <StatsPane key="stats" />,
+    agents: <AgentCliPane key="agents" go={go} />,
+    processes: <ProcessListPane key="processes" />,
+    files: <FileTreePane key="files" onOpenFile={setOpenFile} />,
+    editor: <EditorPane key="editor" path={openFile} />,
+    terminal: <TileTerminal key="terminal" />,
+  };
   return (
     <div className="tiled-dash">
-      <StatsPane />
-      <ProcessListPane />
-      <FileTreePane onOpenFile={setOpenFile} />
-      <EditorPane path={openFile} />
-      <TileTerminal />
+      <TiledNav go={go} />
+      {enabled.map((id) => panes[id]).filter(Boolean)}
     </div>
+  );
+}
+
+function TiledNav({ go }) {
+  return (
+    <div className="tiled-nav">
+      <div className="tiled-nav-scroll">
+        {NAV_TARGETS.map((n) => (
+          <button key={n.label} onClick={() => go?.(n.id)}><n.icon /> {n.label}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------- AI CLIs -----------------------------------
+
+// The three coding CLIs, surfaced straight on the home screen so they're one
+// tap away instead of buried in Agents. Install/login/launch all resolve
+// their real command server-side (server/agents.js) and hand it to the
+// terminal — the same plumbing the Agents screen uses, not a second copy of
+// the command strings.
+const CLI_IDS = ['claude-code', 'codex', 'antigravity'];
+
+function AgentCliPane({ go }) {
+  const [runtimes, setRuntimes] = useState(null);
+  const [msg, setMsg] = useState('');
+
+  async function load() {
+    try { const r = await api('/agents/runtimes'); setRuntimes(r.runtimes || []); }
+    catch { setRuntimes([]); }
+  }
+  useEffect(() => { load(); }, []);
+
+  // The server decides install vs login vs launch vs reattach in one place
+  // (resolveOpen in server/agents.js) — the client just carries out whatever
+  // it says. `attach` deliberately sends no command: the CLI is already
+  // sitting in its own session, so re-sending one would type into its prompt.
+  async function run(rt) {
+    setMsg('');
+    try {
+      const r = await api(`/agents/runtimes/${rt.id}/open`, { method: 'POST', body: '{}' });
+      go?.('terminal', {
+        sessionId: r.sessionId,
+        cwd: r.cwd,
+        pendingCommand: r.action === 'attach' ? undefined : r.command,
+      });
+    } catch (e) { setMsg(e.message); }
+  }
+
+  const list = (runtimes || []).filter((r) => CLI_IDS.includes(r.id));
+  const stateOf = (rt) => (!rt.installed ? 'install' : !rt.loggedIn ? 'log in' : 'open');
+  const hintOf = (rt) => (!rt.installed ? 'Tap to install' : !rt.loggedIn ? 'Tap to sign in once' : `Resume ${rt.defaultCommand}`);
+
+  return (
+    <Pane icon={Bot} title="AI CLIs" className="tile-agents">
+      {msg && <div className="tile-pane-error">{msg}</div>}
+      <div className="tile-agents-list">
+        {list.map((rt) => (
+          <button key={rt.id} className="tile-agent-row" onClick={() => run(rt)}>
+            <Bot />
+            <div className="tile-agent-copy">
+              <strong>{rt.label}</strong>
+              <small>{hintOf(rt)}</small>
+            </div>
+            <span className={'tile-agent-state' + (rt.installed && rt.loggedIn ? ' ready' : '')}>
+              {stateOf(rt)}
+            </span>
+          </button>
+        ))}
+        {runtimes && !list.length && <div className="tile-pane-empty">No CLI runtimes found.</div>}
+        {!runtimes && <div className="tile-pane-empty">Loading…</div>}
+      </div>
+    </Pane>
   );
 }
 
