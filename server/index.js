@@ -511,8 +511,9 @@ app.post('/api/settings',auth,(req,res)=>{
     const t=body.tiledPanes;
     if(Array.isArray(t)&&t.every(x=>typeof x==='string'))c.tiledPanes=t;
   }
+  if('tiledPalette' in body&&(body.tiledPalette==='mono'||body.tiledPalette==='color'))c.tiledPalette=body.tiledPalette;
   saveConfig(c);
-  res.json({ok:true,theme:c.theme,homeTiles:c.homeTiles,uiVariant:c.uiVariant,omarchyLayout:c.omarchyLayout,tiledPanes:c.tiledPanes});
+  res.json({ok:true,theme:c.theme,homeTiles:c.homeTiles,uiVariant:c.uiVariant,omarchyLayout:c.omarchyLayout,tiledPanes:c.tiledPanes,tiledPalette:c.tiledPalette});
 });
 
 // ---- wallpaper (Omarchy home-screen background) ----

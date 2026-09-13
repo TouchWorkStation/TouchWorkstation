@@ -886,3 +886,29 @@ html.omarchy-build,html.omarchy-build body,html.omarchy-build #root{background:#
 .tiled-skin .setting-icon{background:rgba(126,231,135,.10);color:var(--accent);border-radius:8px}
 .tiled-skin h1,.tiled-skin h2,.tiled-skin h3,.tiled-skin strong{letter-spacing:.01em}
 .tiled-skin a,.tiled-skin .link{color:var(--accent)}
+
+/* ---- Tiled colour palette -------------------------------------------------
+   Settings > Tiled colours > Colour. Layered on top of the mono skin: gives
+   each pane its own accent border + icon colour so they separate at a glance,
+   instead of every pane being the same green. Two accents (green + the mauve
+   cba6f7 from the reference Hyprland config) alternated across panes, matching
+   the mockup. Scoped to <html class="tiled-color"> so mono stays the default. */
+.tiled-color{--tc-green:#7ee787;--tc-mauve:#cba6f7;--tc-teal:#8be9d0;--tc-blue:#7aa2f7}
+.tiled-color .tile-stats{border-color:rgba(126,231,135,.55)}
+.tiled-color .tile-files{border-color:rgba(126,231,135,.55)}
+.tiled-color .tile-processes{border-color:rgba(203,166,247,.55)}
+.tiled-color .tile-editor{border-color:rgba(203,166,247,.55)}
+.tiled-color .tile-agents{border-color:rgba(203,166,247,.55)}
+.tiled-color .tile-terminal{border-color:rgba(122,162,247,.5)}
+/* Head icons follow their pane's accent. */
+.tiled-color .tile-stats .tile-pane-head svg,.tiled-color .tile-files .tile-pane-head svg{color:var(--tc-green)}
+.tiled-color .tile-processes .tile-pane-head svg,.tiled-color .tile-editor .tile-pane-head svg,.tiled-color .tile-agents .tile-pane-head svg{color:var(--tc-mauve)}
+.tiled-color .tile-terminal .tile-pane-head svg{color:var(--tc-blue)}
+/* Purple folders, like a file manager. */
+.tiled-color .tile-file-row svg{color:var(--tc-mauve)}
+/* Process list: teal column headers, a green selected/hover row. */
+.tiled-color .tile-proc-row.tile-proc-head{color:var(--tc-teal)}
+.tiled-color .tile-proc-row:not(.tile-proc-head):hover,.tiled-color .tile-proc-row.selected{background:rgba(126,231,135,.14);color:#eafff0}
+/* Editor filename + gutter tint. */
+.tiled-color .tile-editor .tile-pane-head span:first-of-type{color:#e6d9ff}
+.tiled-color .tile-editor-msg{color:var(--tc-mauve)}
