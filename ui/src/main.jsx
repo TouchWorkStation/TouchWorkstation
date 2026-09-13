@@ -97,6 +97,11 @@ function App(){
  // at module load, since it can now change at runtime without a rebuild.
  const omarchy=settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY;
  useEffect(()=>{document.documentElement.classList.toggle('omarchy-build',omarchy)},[omarchy]);
+ // Tiled isn't only a home-screen layout — picking it restyles the whole app
+ // to match (black ground, mono type, green accents), so moving off the home
+ // screen doesn't drop you back into the purple standard chrome mid-session.
+ const tiledSkin=omarchy&&settings?.omarchyLayout==='tiled';
+ useEffect(()=>{document.documentElement.classList.toggle('tiled-skin',tiledSkin)},[tiledSkin]);
  if(loading)return <Splash/>;
  if(!me)return <Login onDone={async(pw)=>{setLoginPw(pw);setMe(await api('/me'));setSettings(await api('/settings'))}}/>;
  // A fresh install ships a temporary generated password. Nothing else in the
@@ -200,7 +205,11 @@ function Shell({me,settings,setSettings,omarchy}){
 // Omarchy's own destinations ({id,icon,label} objects) normalized to the
 // same [id,Icon,label] tuple shape the standard shell's NAV already uses,
 // so MobileSheet can render either without caring which build it's in.
-const minimalNavItems=MINIMAL_NAV.map(n=>[n.id,n.icon,n.label]);
+// Home is prepended rather than added to MINIMAL_NAV itself: that list is
+// also the Omarchy home screen's own destination list, where a "Home" row
+// pointing at the screen you're already on would be nonsense. In the sheet —
+// opened from anywhere — it's the way back, so every variant's nav has one.
+const minimalNavItems=[['home',House,'Home'],...MINIMAL_NAV.map(n=>[n.id,n.icon,n.label])];
 function Topbar({me,mobile,view,project,onMenu,go}){
  const label=project?project.name:(NAV.find(n=>n[0]===view)?.[2]||'Home');
  return <header className="topbar">{mobile?<button className="icon-btn" onClick={onMenu}><Menu/></button>:<div className="crumb">TouchWorkstation <ChevronRight/> <span>{label}</span></div>}<div className="top-status"><span><Dot/> Connected</span>{!mobile&&<Pill>{me.version}</Pill>}<button className="icon-btn" onClick={()=>go('settings')}><Settings/></button></div></header>}
