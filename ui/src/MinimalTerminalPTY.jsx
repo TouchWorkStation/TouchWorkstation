@@ -234,10 +234,18 @@ export default function MinimalTerminalPTY({ sessionId = 'main', cwd, pendingCom
     setPasteFallback(false);
   }
 
+  // Mirrors a native copy into the Clipboard history screen; the real OS
+  // clipboard write already happened before this fires, so this never
+  // affects the copy itself.
+  function onCopy() {
+    const text = window.getSelection()?.toString();
+    if (text) api('/clipboard', { method: 'POST', body: JSON.stringify({ text, source: 'terminal' }) }).catch(() => {});
+  }
+
   return (
     <div className="mt-root">
       <div className="mt-pane-wrap">
-        <pre ref={bodyRef} className="mt-pane" onScroll={onScroll}>{paneText}</pre>
+        <pre ref={bodyRef} className="mt-pane" onScroll={onScroll} onCopy={onCopy}>{paneText}</pre>
         {!atBottom && (
           <button className="mt-jump" onClick={scrollToBottom} aria-label="Jump to latest">
             <ArrowDown /> latest

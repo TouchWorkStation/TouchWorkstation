@@ -252,6 +252,19 @@
 .docker-perm>svg{color:var(--yellow);flex:none;width:22px;height:22px}
 .docker-perm strong{font-size:13px;display:block}
 .docker-perm p{font-size:12px;color:#b3aab8;line-height:1.5;margin:5px 0 10px}
+
+/* ===== clipboard history ===== */
+.clipboard-list{display:flex;flex-direction:column;gap:9px}
+.clipboard-card{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:13px;background:rgba(21,18,24,.82);padding:12px 14px}
+.clipboard-card:hover{border-color:var(--line2);background:rgba(31,25,34,.9)}
+.clipboard-card p{margin:0;font-size:13px;color:#e8e2ea;line-height:1.4;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;word-break:break-word}
+.clipboard-card-foot{display:flex;align-items:center;justify-content:space-between;margin-top:8px;gap:10px}
+.clipboard-card-foot small{font-size:11px;color:var(--faint);text-transform:capitalize}
+.clipboard-card-actions{display:flex;align-items:center;gap:10px;flex:none}
+.cc-copy,.cc-del{display:grid;place-items:center;color:#b8b1bc}
+.cc-copy svg,.cc-del svg{width:14px;height:14px}
+.cc-del{color:#e87681}
+.cc-del:hover{color:#ff8790}
 .docker-logs-overlay{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.6);display:grid;place-items:center;padding:16px;animation:tw-fade .2s ease}
 .docker-logs{width:min(760px,100%);max-height:80vh;background:#0b090d;border:1px solid var(--line2);border-radius:16px;display:flex;flex-direction:column;overflow:hidden}
 .dl-head{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;border-bottom:1px solid var(--line)}
