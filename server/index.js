@@ -83,7 +83,22 @@ function twPath(){
   try{const nvm=`${HOME}/.nvm/versions/node`;if(fs.existsSync(nvm))for(const v of fs.readdirSync(nvm))extra.push(`${nvm}/${v}/bin`)}catch{}
   return [...new Set([...(process.env.PATH||'').split(':'),...extra])].filter(Boolean).join(':');
 }
-const {NODE_ENV:_ignoredNodeEnv,...ENV_NO_NODE_ENV}=process.env;
+const {
+  NODE_ENV:_ignoredNodeEnv,
+  // Whatever process happens to be running this server (a systemd unit gets
+  // a clean, explicitly-declared environment and would never have these —
+  // but `node server/index.js` run by hand in a terminal that's also been
+  // used for other git work inherits its exact ambient state) must never
+  // leak git's own plumbing vars into a spawned child. GIT_DIR set without a
+  // matching GIT_WORK_TREE makes git treat every command as operating on a
+  // bare repo — "fatal: this operation must be run in a work tree" on
+  // something like `git reset --hard`, no matter what directory the script
+  // itself `cd`s into first. Hit this for real: the update-build spawn
+  // (`/api/update/apply` below) failed exactly this way.
+  GIT_DIR:_ignoredGitDir,GIT_WORK_TREE:_ignoredGitWorkTree,
+  GIT_INDEX_FILE:_ignoredGitIndexFile,GIT_OBJECT_DIRECTORY:_ignoredGitObjectDir,
+  ...ENV_NO_NODE_ENV
+}=process.env;
 // Never let NODE_ENV=production leak into project installs/dev servers.
 // With it set, `npm install` silently skips ALL devDependencies (exit 0, no
 // error) — and vite/next/etc. live there, so the dev server binary never
@@ -116,7 +131,7 @@ let runners=new Map();
 function parseCookies(req){return Object.fromEntries((req.headers.cookie||'').split(';').map(x=>x.trim()).filter(Boolean).map(x=>{const i=x.indexOf('=');return [x.slice(0,i),decodeURIComponent(x.slice(i+1))]}));}
 function auth(req,res,next){try{const t=parseCookies(req).tw_session||req.headers.authorization?.replace('Bearer ','');if(!t)throw 0;req.user=jwt.verify(t,JWT_SECRET);next()}catch{res.status(401).json({error:'Not authenticated'})}}
 app.post('/api/login',(req,res)=>{if(req.body.password!==APP_PASSWORD)return res.status(401).json({error:'Invalid password'});const token=jwt.sign({sub:os.userInfo().username},JWT_SECRET,{expiresIn:'30d'});res.setHeader('Set-Cookie',`tw_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`);res.json({ok:true,mustChangePassword:PW_MUST_CHANGE})});
-app.get('/api/me',auth,(req,res)=>res.json({hostname:os.hostname(),user:os.userInfo().username,version:'1.0.0-beta.26',build:BUILD_SHA,startedAt:PROCESS_STARTED_AT,mustChangePassword:PW_MUST_CHANGE}));
+app.get('/api/me',auth,(req,res)=>res.json({hostname:os.hostname(),user:os.userInfo().username,version:'1.0.0-beta.27',build:BUILD_SHA,startedAt:PROCESS_STARTED_AT,mustChangePassword:PW_MUST_CHANGE}));
 
 // Rewrite APP_PASSWORD= (and clear PW_MUST_CHANGE) in the env file in place,
 // preserving every other line, so systemd/postinst keep reading the same
@@ -631,7 +646,7 @@ app.post('/api/update/apply',auth,(req,res)=>{
     `cd ${JSON.stringify(archDir)}`,
     `makepkg --noconfirm --needed`,
   ].join(' && ');
-  const child=spawn('bash',['-lc',script],{cwd:HOME,env:{...process.env,PATH:twPath()}});
+  const child=spawn('bash',['-lc',script],{cwd:HOME,env:SPAWN_ENV});
   let out='';
   child.stdout?.on('data',(d)=>{out+=d});
   child.stderr?.on('data',(d)=>{out+=d});
