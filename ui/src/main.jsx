@@ -580,7 +580,8 @@ function Agents({go,openAgent,navState}){
  async function install(r){setMsg('');try{const res=await api(`/agents/runtimes/${r.id}/install`,{method:'POST',body:'{}'});go('terminal',{pendingCommand:res.command,cwd:res.cwd,sessionId:res.sessionId})}catch(e){setMsg(e.message)}}
  // Log in to a runtime — runs its native OAuth/setup flow in a terminal; the URL/code it prints is completed by the user.
  async function login(r){setMsg('');try{const res=await api(`/agents/runtimes/${r.id}/login`,{method:'POST',body:'{}'});go('terminal',{pendingCommand:res.command,cwd:res.cwd,sessionId:res.sessionId})}catch(e){setMsg(e.message)}}
- if(editing!==null)return <AgentEditor agent={editing==='new'?null:editing} defaultWorkspace={editing==='new'?navState?.workspace:null} runtimes={runtimes} onCancel={()=>setEditing(null)} onSaved={()=>{setEditing(null);load()}} onLogin={login} onInstall={install}/>;
+ if(editing==='new')return <AgentWalkthrough defaultWorkspace={navState?.workspace} runtimes={runtimes} go={go} onCancel={()=>setEditing(null)} onSaved={()=>{setEditing(null);load()}} onLogin={login} onInstall={install}/>;
+ if(editing!==null)return <AgentEditor agent={editing} runtimes={runtimes} onCancel={()=>setEditing(null)} onSaved={()=>{setEditing(null);load()}} onLogin={login} onInstall={install}/>;
  const installedRuntimes=runtimes.filter(r=>r.installed).length;
  return <div className="page-pad"><PageTitle kicker="AI WORKSPACE" title="Agents" body="Configure and launch your agent runtimes — Claude, Hermes, Codex and more — each scoped to a project with its own permissions." actions={<Button className="primary" onClick={()=>setEditing('new')}><Plus/> New agent</Button>}/>
   {msg&&<div className="notice">{msg}</div>}
@@ -598,6 +599,73 @@ function AgentCard({a,onOpen,onLaunch,onEdit,onDelete}){
   <div className="ahc-actions"><Button className="primary" onClick={onOpen}><LayoutGrid/> Open</Button><Button onClick={onLaunch} disabled={a.runtimeUnderConstruction}><Play/> {a.runtimeUnderConstruction?'Unavailable':a.running?'Attach':a.runtimeInstalled?'Launch':'Install & Launch'}</Button><button className="ahc-del" onClick={onEdit} title="Configure"><SlidersHorizontal/></button><button className="ahc-del" onClick={onDelete} title="Delete"><Trash2/></button></div>
  </div>
 }
+// A guided, stepped alternative to the dense AgentEditor form, for CREATING a
+// new agent (editing keeps the form). Three steps that mirror how you'd
+// actually set one up: pick the directory it works in, pick which CLI (reusing
+// whatever login you already did), then name it and launch. Launch drops you
+// straight into that CLI running in the chosen directory; from there the Chat
+// tab or the terminal talks to it.
+function AgentWalkthrough({defaultWorkspace,runtimes,go,onCancel,onSaved,onLogin,onInstall}){
+ const[step,setStep]=useState(0);
+ const[projects]=useLoad(()=>api('/projects').then(r=>r.projects||[]).catch(()=>[]),[]);
+ const[workspace,setWorkspace]=useState(defaultWorkspace||'');
+ const[runtime,setRuntime]=useState('');
+ const[name,setName]=useState('');
+ const[instructions,setInstructions]=useState('');
+ const[busy,setBusy]=useState(false),[err,setErr]=useState('');
+ const rt=runtimes.find(r=>r.id===runtime);
+ const wsName=workspace?workspace.split('/').filter(Boolean).pop():'Home folder';
+ // Keep a sensible name in step by step 3 so "Create" is never dead with no
+ // hint — including the Home-folder case, where there's no directory to name
+ // it after.
+ useEffect(()=>{setName(workspace?workspace.split('/').filter(Boolean).pop()+' agent':'Home agent')},[workspace]);
+ async function create(launch){
+  setBusy(true);setErr('');
+  try{
+   const body={name:name||`${wsName} agent`,runtime,workspace:workspace||null,instructions,
+    // Sensible working defaults for a dev agent scoped to one project — it can
+    // read and modify files there and run commands, but nothing destructive or
+    // outside the workspace without the user turning it on in the editor later.
+    permissions:{readFiles:true,modifyFiles:true,runCommands:true,startDevServer:true,gitCommit:false,gitPush:false,docker:false,outsideWorkspace:false}};
+   const r=await api('/agents',{method:'POST',body:JSON.stringify(body)});
+   if(launch){const L=await api(`/agents/${r.agent.id}/launch`,{method:'POST',body:'{}'});go('terminal',{pendingCommand:L.command,cwd:L.cwd,sessionId:L.sessionId});}
+   else onSaved();
+  }catch(e){setErr(e.message);setBusy(false)}
+ }
+ const canNext=step===0?true:step===1?!!runtime:!!name;
+ return <div className="page-pad"><PageTitle kicker={`STEP ${step+1} OF 3`} title={['Where should it work?','Which agent?','Name & launch'][step]} body={['Pick the project directory the agent runs in — it opens there and stays scoped to it.','Pick a CLI. It reuses whatever login you already did — no need to sign in again if you have.','Give it a name, then launch it into that directory. Talk to it from Chat or the terminal.'][step]}/>
+  {err&&<div className="inline-error">{err}</div>}
+  <div className="aw-steps">{[0,1,2].map(i=><span key={i} className={'aw-dot'+(i===step?' on':'')+(i<step?' done':'')}/>)}</div>
+
+  {step===0&&<div className="aw-body">
+   <div className="aw-ws-list">
+    <button className={'aw-ws'+(workspace===''?' active':'')} onClick={()=>setWorkspace('')}><House/><div><strong>Home folder</strong><small>Not scoped to a project</small></div>{workspace===''&&<Check/>}</button>
+    {(projects||[]).map(p=><button key={p.path} className={'aw-ws'+(workspace===p.path?' active':'')} onClick={()=>setWorkspace(p.path)}><Folder/><div><strong>{p.name}</strong><small>{shortPath(p.path)}</small></div>{workspace===p.path&&<Check/>}</button>)}
+   </div>
+   <label className="af-field"><span>Or type a path</span><input value={workspace} onChange={e=>setWorkspace(e.target.value)} placeholder="~/TouchWorkstation/Projects/my-app"/></label>
+  </div>}
+
+  {step===1&&<div className="aw-body"><div className="af-runtimes">{runtimes.map(r=><button key={r.id} className={'af-runtime'+(runtime===r.id?' active':'')+(r.installed?'':' missing')+(r.underConstruction?' construction':'')} onClick={()=>{if(!r.underConstruction)setRuntime(r.id)}} disabled={r.underConstruction}><Bot/><strong>{r.label}</strong><small>{r.underConstruction?'Under construction':!r.installed?'Not installed':r.loggedIn?'Installed · signed in':'Installed · sign in needed'}</small>{!r.underConstruction&&r.installed&&r.canLogin&&<span className="af-runtime-login" onClick={e=>{e.stopPropagation();onLogin(r)}}><LogIn/> {r.loggedIn?'Re-sign in':'Sign in'}</span>}{!r.underConstruction&&!r.installed&&r.canInstall&&<span className="af-runtime-install" onClick={e=>{e.stopPropagation();onInstall(r)}}><Download/> Install</span>}</button>)}</div>
+   {rt&&!rt.installed&&<p className="af-hint">{rt.label} isn't installed. Tap <b>Install</b> — or just launch at the end, which installs then opens it in one go.</p>}
+   {rt&&rt.installed&&!rt.loggedIn&&rt.canLogin&&<p className="af-hint">{rt.label} is installed but not signed in yet. Tap <b>Sign in</b> above (once), or launch and complete its prompt — either way it's remembered afterwards.</p>}
+   {rt&&rt.installed&&rt.loggedIn&&<p className="af-hint">{rt.label} is signed in — launching reuses that login.</p>}
+  </div>}
+
+  {step===2&&<div className="aw-body">
+   <label className="af-field"><span>Name</span><input value={name} onChange={e=>setName(e.target.value)} placeholder={`${wsName} agent`}/></label>
+   <label className="af-field"><span>Instructions <em>(optional)</em></span><textarea value={instructions} onChange={e=>setInstructions(e.target.value)} rows={3} placeholder="Standing instructions for this agent…"/></label>
+   <div className="aw-review"><div><Folder/> <span>{workspace?shortPath(workspace):'Home folder'}</span></div><div><Bot/> <span>{rt?.label||'—'}{rt?rt.loggedIn?' · signed in':rt.installed?' · sign in on launch':' · installs on launch':''}</span></div></div>
+   <p className="af-hint">Working permissions (read, edit, run, dev server) are on for this project by default; git push and anything outside the workspace stay off. Adjust later in the agent's editor.</p>
+  </div>}
+
+  <div className="agent-form-actions">
+   <Button onClick={()=>step===0?onCancel():setStep(step-1)}>{step===0?'Cancel':'Back'}</Button>
+   {step<2?<Button className="primary" onClick={()=>setStep(step+1)} disabled={!canNext}>Next</Button>
+    :<><Button onClick={()=>create(false)} disabled={busy||!name}>Create only</Button><Button className="primary" onClick={()=>create(true)} disabled={busy||!name}>{busy?'Working…':rt&&!rt.installed?'Create, install & launch':'Create & launch'}</Button></>}
+  </div>
+ </div>;
+}
+
 function AgentEditor({agent,defaultWorkspace,runtimes,onCancel,onSaved,onLogin,onInstall}){
  const isNew=!agent;
  const[name,setName]=useState(agent?.name||(defaultWorkspace?defaultWorkspace.split('/').filter(Boolean).pop():'')||'');

@@ -440,7 +440,12 @@ export function resolveLaunch(id) {
   // authenticated state by the presence of Claude Code's own credentials
   // file (~/.claude/.credentials.json, mode 0600, per Anthropic's docs).
   if (agent.runtime === 'claude-code' && binOnPath(rt.bin) && !claudeCodeAuthed()) {
-    command = `claude setup-token && ${rt.defaultCommand}`;
+    // Reuse the SAME persisting login wrapper the CLI tiles use (CLAUDE_LOGIN)
+    // instead of a bare `setup-token && claude` that threw the token away —
+    // that drift was why signing in from the Agents flow never stuck. Once
+    // signed in (here or from a tile) the token lives in cli.env, which the
+    // shell sources, so every later launch is already authed and skips this.
+    command = CLAUDE_LOGIN;
   }
   return { ok: true, command, workspace: agent.workspace, sessionId: agent.id };
 }
@@ -457,7 +462,15 @@ export function claudeCodeAuthed() {
     custom ? path.join(custom, '.credentials.json') : null,
     path.join(home, '.claude', '.credentials.json'),
   ].filter(Boolean);
-  return candidates.some((p) => { try { return fs.existsSync(p); } catch { return false; } });
+  if (candidates.some((p) => { try { return fs.existsSync(p); } catch { return false; } })) return true;
+  // A previous sign-in (from here or a CLI tile) persisted the token to our
+  // own env file. The server process doesn't source it, but its presence is
+  // proof the user is already signed in — so treat it as authed and let the
+  // shell (which does source it) supply the token to `claude`.
+  try {
+    const envf = path.join(home, '.config', 'touchworkstation', 'cli.env');
+    return fs.readFileSync(envf, 'utf8').includes('CLAUDE_CODE_OAUTH_TOKEN');
+  } catch { return false; }
 }
 
 // Record that an agent was launched (for the monitoring view).
