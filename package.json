@@ -22,5 +22,8 @@
     "react-dom": "latest",
     "vite": "latest",
     "ws": "latest"
+  },
+  "allowScripts": {
+    "node-pty": true
   }
 }
