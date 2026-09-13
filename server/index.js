@@ -14,6 +14,7 @@ import {mountAppRoutes} from './apps-routes.js';
 import {mountAgentRoutes} from './agents-routes.js';
 import {mountBoardRoutes} from './agent-board-routes.js';
 import {mountDockerRoutes} from './docker-routes.js';
+import {mountClipboardRoutes} from './clipboard-routes.js';
 
 const sh=promisify(exec);
 const app=express();
@@ -630,7 +631,17 @@ let updateBuild={status:'idle'};
 
 // Check GitHub for a newer commit on master than what this server was
 // built from, and tell the client whether this install can auto-build it
-// (Arch, via makepkg) or only show the manual command.
+// (Arch, via makepkg) or only show the manual command. That manual
+// command has to work identically on .deb/.rpm/Arch installs — it used to
+// be a git-clone-and-makepkg command, which is Arch-only and does nothing
+// useful on Ubuntu/Fedora (no PKGBUILD, no makepkg). Now that
+// install.sh + the GitHub Actions release workflow exist, re-running the
+// same one-line installer is the correct update command everywhere: it
+// detects apt/dnf/pacman itself and installs whatever the latest release
+// actually is, which naturally upgrades an already-installed package in
+// place. Pulled straight from GitHub raw rather than the website's
+// /api/public/install proxy, so this keeps working even if that proxy is
+// ever misconfigured — this repo IS the source of truth for it either way.
 app.get('/api/update/check',auth,async(req,res)=>{
   try{
     const r=await fetch('https://api.github.com/repos/TouchWorkStation/TouchWorkstation/commits/master',{headers:{'Accept':'application/vnd.github+json','User-Agent':'touchworkstation-update-check'}});
@@ -644,10 +655,7 @@ app.get('/api/update/check',auth,async(req,res)=>{
       running,
       latest:latest||'unknown',
       canAutoBuild:makepkgAvailable(),
-      // The install command matches the Arch package's install flow (see
-      // packaging/arch/PKGBUILD's -git source URL). Keeping it in one
-      // place — here — means the UI never has to know packaging details.
-      installCommand:'cd ~/touchworkstation-git && git pull && makepkg -si',
+      installCommand:'curl -fsSL https://raw.githubusercontent.com/TouchWorkStation/TouchWorkstation/master/install.sh | sh',
       message:upToDate
         ?`You're running the latest commit (${running}).`
         :`New commit available: ${latest} (running ${running}).`,
@@ -775,6 +783,7 @@ mountAppRoutes(app,{auth,HOME});
 mountAgentRoutes(app,{auth,HOME,stateDir:STATE_DIR});
 mountBoardRoutes(app,{auth,stateDir:STATE_DIR});
 mountDockerRoutes(app,{auth});
+mountClipboardRoutes(app,{auth,stateDir:STATE_DIR});
 const dist=path.resolve(process.cwd(),'dist');
 app.use(express.static(dist,{
   maxAge:'1y',

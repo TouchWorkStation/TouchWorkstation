@@ -12,7 +12,7 @@
 // wallpaper-default.jpg shipped here) without touching any code.
 
 import { useEffect, useState } from 'react';
-import { Cpu, MemoryStick, HardDrive, Upload, Download, TerminalSquare, Code2, Folder, GitBranch, Box, Sparkles, Settings, Keyboard } from 'lucide-react';
+import { Cpu, MemoryStick, HardDrive, Upload, Download, TerminalSquare, Code2, Folder, GitBranch, Box, Sparkles, Settings, ClipboardList, Keyboard } from 'lucide-react';
 import { api, usePoll } from './main.jsx';
 
 // Exported so main.jsx's mobile nav sheet (opened from the top-left
@@ -26,6 +26,7 @@ export const NAV = [
   { id: 'projects', label: 'GitHub', icon: GitBranch },
   { id: 'docker', label: 'Containers', icon: Box },
   { id: 'agents', label: 'Agents', icon: Sparkles },
+  { id: 'clipboard', label: 'Clipboard', icon: ClipboardList },
   // Only on the Omarchy home — this is an Omarchy-specific keyboard
   // trainer, so it has no equivalent entry in the standard shell's NAV.
   { id: 'shortcuts', label: 'Omarchy Desktop Shortcuts', icon: Keyboard },

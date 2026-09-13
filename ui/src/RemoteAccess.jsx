@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import { ShieldCheck, Check, Copy, ExternalLink, Loader, ArrowRight, X } from 'lucide-react';
-import { api, Button } from './main.jsx';
+import { api, Button, copyText } from './main.jsx';
 
 export function RemoteAccess({ onClose }) {
   const [status, setStatus] = useState(null);
@@ -119,7 +119,7 @@ function CopyBox({ text }) {
   return (
     <div className="ra-copybox">
       <code>{text}</code>
-      <button onClick={() => { navigator.clipboard?.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
+      <button onClick={() => { copyText(text, 'remote access'); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
         {copied ? <Check/> : <Copy/>}
       </button>
     </div>

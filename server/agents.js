@@ -23,6 +23,24 @@ import { augmentedPath } from './apps.js';
 // confirmed yet" — the dashboard shows it as needing setup rather than
 // guessing an invocation that might not exist.
 
+// Claude Code and Codex both install via plain `npm install -g`, which
+// assumes npm is already on the machine — true on Jarvis (this app depends
+// on Node itself), but NOT guaranteed on whatever machine an agent actually
+// gets installed on, which can be a bare fresh VM with nothing but a base
+// OS image. Confirmed live: `npm install -g @anthropic-ai/claude-code` on a
+// stock Ubuntu VM failed outright with "Command 'npm' not found". This
+// bootstraps a real Node/npm first, only if npm isn't already present —
+// Ubuntu/Debian's own apt nodejs package is often years out of date (Ubuntu
+// 22.04 ships Node 12 via apt, far too old for a modern CLI), so that path
+// pulls from NodeSource instead of the distro repo; dnf/pacman's own repos
+// are kept current enough to install directly. Mirrors the same
+// multi-package-manager detection this app's own install.sh/postinst
+// scripts already use elsewhere.
+const ENSURE_NPM = 'command -v npm >/dev/null 2>&1 || { '
+  + 'command -v apt-get >/dev/null 2>&1 && (curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs) || '
+  + 'command -v dnf >/dev/null 2>&1 && sudo dnf install -y nodejs npm || '
+  + 'command -v pacman >/dev/null 2>&1 && sudo pacman -Sy --noconfirm nodejs npm; }';
+
 export const RUNTIMES = {
   'claude-code': {
     label: 'Claude Code',
@@ -36,7 +54,7 @@ export const RUNTIMES = {
     // device (your phone), then hands back a token to paste into the
     // terminal — no local browser or callback needed.
     loginCommand: 'claude setup-token',
-    installCommand: 'npm install -g @anthropic-ai/claude-code',
+    installCommand: `${ENSURE_NPM} && npm install -g @anthropic-ai/claude-code`,
     supportsModels: true,
     models: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'],
     docs: 'Anthropic Claude Code CLI',
@@ -57,8 +75,21 @@ export const RUNTIMES = {
     label: 'Codex',
     bin: 'codex',
     defaultCommand: 'codex',
-    loginCommand: 'codex login',   // Codex OAuth flow — prints a URL/code to complete
-    installCommand: 'npm install -g @openai/codex',
+    // Plain `codex login` defaults to a localhost OAuth callback — it
+    // opens (via the xdg-open shim) a chatgpt.com/auth.openai.com URL
+    // whose redirect_uri points back at localhost on THIS machine, which a
+    // phone's browser can never reach, so OpenAI rejects the request
+    // outright ("Invalid authorize request" / invalid_authorize_request).
+    // Confirmed live. `--device-auth` is OpenAI's own escape hatch for
+    // exactly this — headless/remote environments — printing a one-time
+    // code to enter at auth.openai.com/codex/device from any device
+    // instead of needing a local callback. Same shape as Claude Code's
+    // `setup-token` fix above. Requires "Device code authorization for
+    // Codex" to be turned on once in ChatGPT Settings > Security first, or
+    // the code is silently rejected server-side — that's an account
+    // setting only the user can flip, not something this app can automate.
+    loginCommand: 'codex login --device-auth',
+    installCommand: `${ENSURE_NPM} && npm install -g @openai/codex`,
     supportsModels: false,
     models: [],
     docs: 'OpenAI Codex CLI',
