@@ -601,10 +601,14 @@ app.get('/api/update/check',auth,async(req,res)=>{
       running,
       latest:latest||'unknown',
       canAutoBuild:makepkgAvailable(),
-      // The install command matches the Arch package's install flow (see
-      // packaging/arch/PKGBUILD's -git source URL). Keeping it in one
-      // place — here — means the UI never has to know packaging details.
-      installCommand:'cd ~/touchworkstation-git && git pull && makepkg -si',
+      // Self-contained: works whether or not ~/touchworkstation already
+      // exists (git -C pull fails cleanly on a missing dir, falling
+      // through to a fresh clone), and — unlike an earlier version of this
+      // command — actually cd's into packaging/arch before running
+      // makepkg, since that's where PKGBUILD lives, not the repo root.
+      // Keeping the full command here means the UI never has to know
+      // packaging details.
+      installCommand:'git -C ~/touchworkstation pull || git clone https://github.com/TouchWorkStation/TouchWorkstation.git ~/touchworkstation; cd ~/touchworkstation/packaging/arch && makepkg -si',
       message:upToDate
         ?`You're running the latest commit (${running}).`
         :`New commit available: ${latest} (running ${running}).`,
