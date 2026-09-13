@@ -120,7 +120,14 @@ jobs:
           # build source (this is a -git package) — HEAD of the default
           # branch at clone time, which is this exact tagged commit
           # immediately after a release tag is cut from it.
-          sudo -u builder bash -c 'cd "$GITHUB_WORKSPACE/packaging/arch" && makepkg --noconfirm -s'
+          #
+          # ARCH_DIR is expanded HERE, in this root shell, before sudo runs —
+          # sudo does not preserve the caller's environment by default, so a
+          # single-quoted command relying on $GITHUB_WORKSPACE surviving into
+          # the builder user's shell silently expanded to empty and failed
+          # with "cd: /packaging/arch: No such file or directory".
+          ARCH_DIR="$GITHUB_WORKSPACE/packaging/arch"
+          sudo -u builder bash -c "cd '$ARCH_DIR' && makepkg --noconfirm -s"
       - run: mkdir -p dist && cp packaging/arch/*.pkg.tar.zst dist/
       - uses: actions/upload-artifact@v4
         with:
