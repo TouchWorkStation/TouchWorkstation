@@ -292,6 +292,45 @@ app.get('/api/status',auth,async(req,res)=>{
 function safeHome(p=''){const resolved=path.resolve(p||HOME);if(!resolved.startsWith(path.resolve(HOME)))throw new Error('Path outside home directory is blocked');return resolved}
 app.get('/api/files',auth,(req,res)=>{try{const p=safeHome(req.query.path||HOME);const entries=fs.readdirSync(p,{withFileTypes:true}).filter(x=>!x.name.startsWith('.')).map(x=>({name:x.name,directory:x.isDirectory(),path:path.join(p,x.name)})).sort((a,b)=>Number(b.directory)-Number(a.directory)||a.name.localeCompare(b.name));const parent=p===HOME?null:path.dirname(p);res.json({path:p,parent,entries})}catch(e){res.status(400).json({error:e.message})}});
 
+// Read/write a single file's raw contents — the Tiled Omarchy layout's
+// config-editor pane. Deliberately separate from /api/files (which only
+// ever lists directories) rather than overloading it, and reuses the same
+// safeHome() guard so this can't read/write outside the home directory any
+// more than the file browser itself already can.
+app.get('/api/file-content',auth,(req,res)=>{
+  try{
+    if(!req.query.path)throw new Error('path is required');
+    const p=safeHome(req.query.path);
+    const stat=fs.statSync(p);
+    if(stat.isDirectory())throw new Error('That path is a directory, not a file');
+    if(stat.size>2_000_000)throw new Error('File is too large to edit here (max 2MB)');
+    res.json({path:p,content:fs.readFileSync(p,'utf8')});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+app.post('/api/file-content',auth,(req,res)=>{
+  try{
+    if(!req.body?.path)throw new Error('path is required');
+    const p=safeHome(req.body.path);
+    fs.writeFileSync(p,String(req.body.content??''));
+    res.json({ok:true});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+
+// Compact process list for the Tiled Omarchy layout's process-list pane —
+// same shape as `top`/`btop`'s summary columns, sorted by CPU like those
+// tools default to, capped at 20 rows since this is a glanceable tile, not
+// a full process manager.
+app.get('/api/processes',auth,async(req,res)=>{
+  try{
+    const {stdout}=await sh("ps -eo pid,user:20,pcpu,pmem,comm --no-headers --sort=-pcpu | head -20",{env:SPAWN_ENV});
+    const processes=stdout.trim().split('\n').filter(Boolean).map((line)=>{
+      const [pid,user,cpu,mem,...rest]=line.trim().split(/\s+/);
+      return {pid:Number(pid),user,cpu:Number(cpu),mem:Number(mem),command:rest.join(' ')};
+    });
+    res.json({processes});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+
 app.post('/api/terminal/exec',auth,async(req,res)=>{const command=String(req.body.command||'').trim();if(!command)return res.json({output:''});try{const {stdout,stderr}=await sh(command,{cwd:HOME,timeout:30000,maxBuffer:2_000_000,shell:'/bin/bash'});res.json({output:(stdout||'')+(stderr||'')})}catch(e){res.status(400).json({error:(e.stdout||'')+(e.stderr||e.message)})}});
 
 const projectRoots=()=>[PROJECTS_DEFAULT,path.join(HOME,'Projects'),path.join(HOME,'Developer'),path.join(HOME,'Code'),path.join(HOME,'src')].filter((x,i,a)=>a.indexOf(x)===i&&fs.existsSync(x));
@@ -459,12 +498,17 @@ app.post('/api/settings',auth,(req,res)=>{
   const body=req.body||{};
   if('theme' in body)c.theme=body.theme;
   if('uiVariant' in body&&(body.uiVariant==='omarchy'||body.uiVariant==='standard'))c.uiVariant=body.uiVariant;
+  // Independent of uiVariant on purpose — same relationship as `theme` has
+  // to everything else. uiVariant picks which build identity you're on;
+  // this only ever matters once you're already on Omarchy, so it doesn't
+  // belong folded into that same field.
+  if('omarchyLayout' in body&&(body.omarchyLayout==='classic'||body.omarchyLayout==='tiled'))c.omarchyLayout=body.omarchyLayout;
   if('homeTiles' in body){
     const t=body.homeTiles;
     if(Array.isArray(t)&&t.every(x=>typeof x==='string'))c.homeTiles=t;
   }
   saveConfig(c);
-  res.json({ok:true,theme:c.theme,homeTiles:c.homeTiles,uiVariant:c.uiVariant});
+  res.json({ok:true,theme:c.theme,homeTiles:c.homeTiles,uiVariant:c.uiVariant,omarchyLayout:c.omarchyLayout});
 });
 
 // ---- wallpaper (Omarchy home-screen background) ----
