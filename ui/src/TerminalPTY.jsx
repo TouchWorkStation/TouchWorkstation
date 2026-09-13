@@ -118,9 +118,25 @@ export default function TerminalPTY({ sessionId = 'main', cwd, pendingCommand })
     refreshPane();
     pollTimer.current = setInterval(refreshPane, POLL_MS);
 
+    // Opening the mobile keyboard resizes the pane (it's flex:1 inside the
+    // now-shorter .terminal-screen) without moving its own scrollTop, so
+    // whatever used to sit at the old bottom edge silently scrolls out of
+    // the now-smaller visible window — the exact "latest text isn't
+    // showing, have to scroll to find it" bug already fixed once for the
+    // Omarchy terminal (MinimalTerminalPTY.jsx) but never ported here.
+    // Opening the keyboard is a deliberate "I'm about to type" action, so
+    // re-pin to the bottom on every viewport change regardless of where
+    // the user had scrolled to. rAF, not immediate: the CSS var write
+    // needs a layout pass before scrollHeight/clientHeight reflect the
+    // new size.
     const setVVH = () => {
       const h = window.visualViewport?.height || window.innerHeight;
       document.documentElement.style.setProperty('--tw-vvh', `${h}px`);
+      autoScrollRef.current = true;
+      requestAnimationFrame(() => {
+        const el = bodyRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
     };
     setVVH();
     window.addEventListener('resize', setVVH);
