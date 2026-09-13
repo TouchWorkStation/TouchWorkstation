@@ -63,6 +63,23 @@ export const RUNTIMES = {
     models: [],
     docs: 'OpenAI Codex CLI',
   },
+  antigravity: {
+    label: 'Antigravity',
+    bin: 'agy',
+    defaultCommand: 'agy',
+    // Unlike Claude Code, agy needs no special-cased login command: it
+    // auto-detects a headless/remote session on first run and prints a
+    // Google Sign-In URL + one-time code directly, instead of trying (and
+    // failing) a localhost OAuth callback — so plain `agy` already handles
+    // first-run auth on its own. loginCommand stays null (same as Ollama)
+    // since there's no separate CLI subcommand to surface as a "Log in"
+    // action.
+    loginCommand: null,
+    installCommand: 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
+    supportsModels: false,
+    models: [],
+    docs: 'Google Antigravity CLI (agy)',
+  },
   ollama: {
     label: 'Ollama',
     bin: 'ollama',

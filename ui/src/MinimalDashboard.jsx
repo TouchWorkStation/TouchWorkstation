@@ -12,10 +12,14 @@
 // wallpaper-default.jpg shipped here) without touching any code.
 
 import { useEffect, useState } from 'react';
-import { Cpu, MemoryStick, HardDrive, Upload, Download, TerminalSquare, Code2, Folder, GitBranch, Box, Sparkles, Settings, ClipboardList } from 'lucide-react';
+import { Cpu, MemoryStick, HardDrive, Upload, Download, TerminalSquare, Code2, Folder, GitBranch, Box, Sparkles, Settings, ClipboardList, Keyboard } from 'lucide-react';
 import { api, usePoll } from './main.jsx';
 
-const NAV = [
+// Exported so main.jsx's mobile nav sheet (opened from the top-left
+// hamburger — the only mobile nav surface on Omarchy now that the bottom
+// dock is hidden there) lists the same Omarchy-specific destinations as
+// this home screen, instead of the standard shell's unrelated NAV list.
+export const NAV = [
   { id: 'terminal', label: 'Terminal', icon: TerminalSquare },
   { id: 'projects', label: 'Projects', icon: Code2 },
   { id: 'files', label: 'Files', icon: Folder },
@@ -23,6 +27,9 @@ const NAV = [
   { id: 'docker', label: 'Containers', icon: Box },
   { id: 'agents', label: 'Agents', icon: Sparkles },
   { id: 'clipboard', label: 'Clipboard', icon: ClipboardList },
+  // Only on the Omarchy home — this is an Omarchy-specific keyboard
+  // trainer, so it has no equivalent entry in the standard shell's NAV.
+  { id: 'shortcuts', label: 'Omarchy Desktop Shortcuts', icon: Keyboard },
   // Settings is reachable everywhere in the standard shell (topbar cog +
   // sidebar), but the bare Omarchy home has neither, so without an entry
   // here it would be unreachable — including the new Interface toggle and

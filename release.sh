@@ -16,6 +16,12 @@
 # Usage: ./release.sh v1.0.0-beta.27 "What changed in this release"
 #
 # One-time setup (per machine): sudo apt-get install -y rpm  (for rpmbuild)
+#
+# This is now the manual/local fallback. The day-to-day path is
+# .github/workflows/release.yml: push a matching `v*` tag and CI builds
+# all three packages (a real Arch build too, not just the PKGBUILD
+# source), install-tests each one on its actual target distro, and
+# publishes the release itself — no dependency on this one machine.
 set -euo pipefail
 
 TAG="${1:?Usage: ./release.sh vX.Y.Z \"release notes\"}"
