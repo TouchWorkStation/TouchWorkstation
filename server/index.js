@@ -516,6 +516,59 @@ app.post('/api/settings',auth,(req,res)=>{
   res.json({ok:true,theme:c.theme,homeTiles:c.homeTiles,uiVariant:c.uiVariant,omarchyLayout:c.omarchyLayout,tiledPanes:c.tiledPanes,tiledPalette:c.tiledPalette});
 });
 
+// ---- weather radar (CLI-style tile) --------------------------------------
+// omastorm (the Omarchy weather plugin the user wanted) is a desktop-only
+// Quickshell NEXRAD viewer — it can't render on the phone. This gives the
+// tiled dashboard its own radar tile with the same pixelated look, rendered
+// as block glyphs client-side. We build a REAL spatial precipitation grid by
+// asking open-meteo for a grid of points around the location in ONE request
+// (open-meteo returns an array for multiple lat/lon) — no image decoding, no
+// new dependency, no API key. Cached briefly since radar only updates ~10min.
+let weatherCache = { at: 0, data: null };
+app.get('/api/weather', auth, async (req, res) => {
+  try {
+    if (weatherCache.data && Date.now() - weatherCache.at < 5 * 60 * 1000) return res.json(weatherCache.data);
+    // Location: public-IP geolocation (no key). Best-effort; degrades to an
+    // error state the pane shows gracefully rather than faking a location.
+    let lat, lon, place;
+    try {
+      const g = await (await fetch('https://ipapi.co/json/', { headers: { 'User-Agent': 'touchworkstation-weather' } })).json();
+      lat = Number(g.latitude); lon = Number(g.longitude);
+      place = [g.city, g.region_code || g.region].filter(Boolean).join(', ');
+    } catch { /* fall through */ }
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.json({ ok: false, message: 'Could not determine your location for radar.' });
+    // Grid of points spanning a regional radar-ish area around the center.
+    const COLS = 22, ROWS = 13, spanLon = 2.4, spanLat = 1.5;
+    const lats = [], lons = [];
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      lats.push((lat + spanLat / 2 - (r / (ROWS - 1)) * spanLat).toFixed(3));
+      lons.push((lon - spanLon / 2 + (c / (COLS - 1)) * spanLon).toFixed(3));
+    }
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=precipitation,temperature_2m,weather_code`;
+    const j = await (await fetch(url)).json();
+    const arr = Array.isArray(j) ? j : [j];
+    const grid = [];
+    for (let r = 0; r < ROWS; r++) {
+      const row = [];
+      for (let c = 0; c < COLS; c++) row.push(Number(arr[r * COLS + c]?.current?.precipitation) || 0);
+      grid.push(row);
+    }
+    const center = arr[Math.floor(ROWS / 2) * COLS + Math.floor(COLS / 2)]?.current || arr[0]?.current || {};
+    const data = {
+      ok: true,
+      place: place || `${lat.toFixed(2)}, ${lon.toFixed(2)}`,
+      temp: center.temperature_2m ?? null,
+      code: center.weather_code ?? null,
+      cols: COLS, rows: ROWS, grid,
+      at: new Date().toISOString(),
+    };
+    weatherCache = { at: Date.now(), data };
+    res.json(data);
+  } catch (e) {
+    res.json({ ok: false, message: `Weather unavailable: ${e.message}` });
+  }
+});
+
 // ---- wallpaper (Omarchy home-screen background) ----
 // Stored in STATE_DIR, not ui/public — that directory is a build-time Vite
 // asset folder that `emptyOutDir` wipes on every rebuild/update, which would

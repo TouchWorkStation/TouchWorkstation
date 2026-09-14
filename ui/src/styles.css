@@ -859,6 +859,24 @@ html.omarchy-build,html.omarchy-build body,html.omarchy-build #root{background:#
 
 .tile-terminal{height:260px}
 .tile-term-body{flex:1;min-height:0;margin:0;padding:8px 10px;overflow-y:auto;-webkit-overflow-scrolling:touch;font-size:11px;line-height:1.5;color:#d6d6d6;white-space:pre-wrap;word-break:break-word}
+/* Apps pane: installed apps as launcher tiles */
+.tile-apps{max-height:280px}
+.tile-apps-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;padding:11px;overflow-y:auto}
+.tile-app{display:flex;flex-direction:column;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.14);border-radius:8px;background:#050505;color:#d6d6d6;padding:12px 8px;font:inherit;font-size:11px;text-align:center}
+.tile-app svg{width:20px;height:20px;color:#7ee787}
+.tile-app span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.tile-app.off{opacity:.5}
+.tile-app.off em{font-style:normal;font-size:8.5px;letter-spacing:.05em;color:#8a8a8a;border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:1px 6px}
+/* Weather radar pane: pixelated CLI-style precipitation grid */
+.tile-weather{min-height:0}
+.tile-wx-head{padding:8px 11px;border-bottom:1px solid rgba(255,255,255,.1);color:#c9c9c9;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile-wx-radar{margin:0;padding:8px 10px;overflow:auto;line-height:1;font-size:12px;letter-spacing:1px;background:#020402}
+.tile-wx-radar div{white-space:pre}
+.tile-wx-radar .wx0{color:#1e2a1e}
+.tile-wx-radar .wx1{color:#3ba55d}
+.tile-wx-radar .wx2{color:#7ee787}
+.tile-wx-radar .wx3{color:#f6b84a}
+.tile-wx-radar .wx4{color:#ef6572}
 .tile-term-input-row{display:flex;align-items:center;gap:6px;border-top:1px solid rgba(255,255,255,.12);padding:6px 10px}
 .tile-term-input-row span{color:#7ee787}
 .tile-term-input-row input{flex:1;border:0;background:transparent;color:#e2e2e2;font:12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;outline:none}

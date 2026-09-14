@@ -24,7 +24,7 @@ export function mountAgentRoutes(app, { auth, HOME, stateDir, paneCommand }) {
     // Only ever a directory the user already picked from their own workspace
     // list; resolveOpen just slugs it into a session name.
     const cwd = typeof body.cwd === 'string' && body.cwd ? body.cwd : null;
-    const opts = { login: !!body.login, cwd };
+    const opts = { login: !!body.login, apiKey: !!body.apiKey, cwd };
     const probe = resolveOpen(id, '', opts);
     if (!probe) return res.status(404).json({ error: 'Unknown runtime' });
     let running = '';

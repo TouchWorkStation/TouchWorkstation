@@ -56,7 +56,7 @@ const ENSURE_NPM = 'command -v npm >/dev/null 2>&1 || { '
 // once) and verified against a stubbed `claude`. If capture somehow fails it
 // falls back to telling the user the manual export, so it never silently
 // half-works. Written for bash/zsh (Omarchy's default shell is bash).
-const CLAUDE_LOGIN = `LOG=$(mktemp); claude setup-token 2>&1 | tee "$LOG"; TOKEN=$(grep -oE 'sk-ant-oat[0-9]{2}-[A-Za-z0-9_-]+' "$LOG" | tail -1); rm -f "$LOG"; if [ -n "$TOKEN" ]; then F="$HOME/.config/touchworkstation/cli.env"; mkdir -p "$(dirname "$F")"; printf 'export CLAUDE_CODE_OAUTH_TOKEN=%s\\n' "$TOKEN" > "$F"; chmod 600 "$F"; for R in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do if [ -e "$R" ]; then grep -q touchworkstation/cli.env "$R" || printf '\\n[ -f ~/.config/touchworkstation/cli.env ] && . ~/.config/touchworkstation/cli.env\\n' >> "$R"; fi; done; export CLAUDE_CODE_OAUTH_TOKEN="$TOKEN"; echo "Signed in - launching Claude Code."; claude; else echo "Could not capture the token automatically. Copy the sk-ant-oat... value shown above, then run:  export CLAUDE_CODE_OAUTH_TOKEN=<token> && claude"; fi`;
+export const CLAUDE_LOGIN = `LOG=$(mktemp); claude setup-token 2>&1 | tee "$LOG"; TOKEN=$(grep -oE 'sk-ant-oat[0-9]{2}-[A-Za-z0-9_-]+' "$LOG" | tail -1); rm -f "$LOG"; if [ -n "$TOKEN" ]; then F="$HOME/.config/touchworkstation/cli.env"; mkdir -p "$(dirname "$F")"; printf 'export CLAUDE_CODE_OAUTH_TOKEN=%s\\n' "$TOKEN" > "$F"; chmod 600 "$F"; for R in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do if [ -e "$R" ]; then grep -q touchworkstation/cli.env "$R" || printf '\\n[ -f ~/.config/touchworkstation/cli.env ] && . ~/.config/touchworkstation/cli.env\\n' >> "$R"; fi; done; export CLAUDE_CODE_OAUTH_TOKEN="$TOKEN"; echo "Signed in - launching Claude Code."; claude; else echo "Could not capture the token automatically. Copy the sk-ant-oat... value shown above, then run:  export CLAUDE_CODE_OAUTH_TOKEN=<token> && claude"; fi`;
 
 export const RUNTIMES = {
   'claude-code': {
@@ -115,6 +115,13 @@ export const RUNTIMES = {
     // can't enable the setting for the user, but it makes the actual cause
     // impossible to miss instead of leaving them guessing.
     loginCommand: 'echo "==> FIRST enable ChatGPT > Settings > Security > \\"Device code authorization for Codex\\", or the code below will be rejected and login will loop. <=="; echo; codex login --device-auth',
+    // Headless alternative to device-auth that needs no ChatGPT account
+    // setting and no OAuth redirect (the redirect_uri flow can't complete
+    // from a phone — confirmed). `--with-api-key` reads the key from STDIN,
+    // never as an argument (which would leak into shell history / process
+    // list), so this drops the user at a prompt where they paste their own
+    // OpenAI key. The app never sees or handles the key.
+    apiKeyLoginCommand: 'echo "Paste your OpenAI API key (sk-...) and press Enter:"; codex login --with-api-key',
     installCommand: `${ENSURE_NPM} && npm install -g @openai/codex`,
     authPaths: ['.codex/auth.json'],
     supportsModels: false,
@@ -265,6 +272,10 @@ export function resolveOpen(runtimeId, runningCommand, opts = {}) {
   // each have a live CLI without one stealing another's conversation.
   const slug = opts.cwd ? '-' + String(opts.cwd).replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(-24) : '';
   const sessionId = `cli-${runtimeId}${slug}`;
+  if (opts.apiKey) {
+    if (!r.apiKeyLoginCommand) return { action: 'unavailable', sessionId, label: r.label, error: `${r.label} has no API-key login.` };
+    return { action: 'login', command: r.apiKeyLoginCommand, sessionId, label: r.label, cwd: opts.cwd };
+  }
   if (opts.login) {
     if (!r.loginCommand) return { action: 'unavailable', sessionId, label: r.label, error: `${r.label} has no separate login step — just open it.` };
     return { action: 'login', command: r.loginCommand, sessionId, label: r.label, cwd: opts.cwd };
@@ -301,6 +312,7 @@ export function runtimeStatus() {
     defaultCommand: r.defaultCommand,
     canInstall: !!r.installCommand,
     canLogin: !!r.loginCommand,
+    canApiKeyLogin: !!r.apiKeyLoginCommand,
     docs: r.docs,
     underConstruction: !!r.underConstruction,
   }));
