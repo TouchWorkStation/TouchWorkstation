@@ -913,6 +913,10 @@ html.omarchy-build,html.omarchy-build body,html.omarchy-build #root{background:#
 .tile-wx-radar .wx2{color:#7ee787}
 .tile-wx-radar .wx3{color:#f6b84a}
 .tile-wx-radar .wx4{color:#ef6572}
+/* Base map behind the precipitation: land a muted terrain green, sea a dim
+   blue dot — so returns read against a coastline like real radar. */
+.tile-wx-radar .wxland{color:#2f4f39}
+.tile-wx-radar .wxsea{color:#22364d}
 .tile-term-input-row{display:flex;align-items:center;gap:6px;border-top:1px solid rgba(255,255,255,.12);padding:6px 10px}
 .tile-term-input-row span{color:#7ee787}
 .tile-term-input-row input{flex:1;border:0;background:transparent;color:#e2e2e2;font:12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;outline:none}
