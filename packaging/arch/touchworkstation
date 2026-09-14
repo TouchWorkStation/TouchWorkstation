@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Unified TouchWorkstation management CLI. One command with subcommands so the
+# common operations (status, restart, logs, url, credentials, update) are all
+# discoverable from `touchworkstation help` instead of a scatter of separate
+# hyphenated binaries.
+set -u
+
+PORT="${TW_ACCESS_PORT:-8088}"
+ENV_FILE="/etc/touchworkstation/touchworkstation.env"
+INSTALL_URL="https://raw.githubusercontent.com/TouchWorkStation/TouchWorkstation/master/install.sh"
+
+need_root() { [ "$(id -u)" -eq 0 ] || { echo "This needs sudo: sudo touchworkstation $1"; exit 1; }; }
+
+show_url() {
+  local host ip
+  host="$(hostname 2>/dev/null)"
+  ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  echo "Open:     http://${host}.local:${PORT}"
+  [ -n "$ip" ] && echo "Fallback: http://${ip}:${PORT}   (IP ${ip}, port ${PORT})"
+  if command -v tailscale >/dev/null 2>&1; then
+    local ts; ts="$(tailscale ip -4 2>/dev/null | head -1)"
+    [ -n "$ts" ] && echo "Tailscale: http://${ts}:${PORT}"
+  fi
+}
+
+cmd_status() {
+  printf '%-18s %s\n' 'Web application' "$(systemctl is-active touchworkstation 2>/dev/null || echo unknown)"
+  printf '%-18s %s\n' 'nginx' "$(systemctl is-active nginx 2>/dev/null || echo unknown)"
+  echo
+  show_url
+}
+
+case "${1:-status}" in
+  status)      cmd_status ;;
+  url|link)    show_url ;;
+  start)       need_root start;   systemctl start touchworkstation nginx;   echo "Started.";  echo; show_url ;;
+  stop)        need_root stop;    systemctl stop touchworkstation;          echo "Stopped." ;;
+  restart)     need_root restart; systemctl restart touchworkstation nginx; sleep 1; cmd_status ;;
+  logs)        journalctl -u touchworkstation -n "${2:-100}" --no-pager ;;
+  follow)      journalctl -u touchworkstation -f ;;
+  credentials|creds)
+               need_root credentials
+               # shellcheck disable=SC1090
+               [ -f "$ENV_FILE" ] && . "$ENV_FILE"
+               show_url
+               echo "Password: ${APP_PASSWORD:-<unset>}" ;;
+  password)    need_root password; touchworkstation-password "${2:-}" ;;
+  update)      echo "Updating from GitHub…"; curl -fsSL "$INSTALL_URL" | sh ;;
+  version)     grep -oE '"version"[^,]*' /opt/touchworkstation/app/package.json 2>/dev/null | head -1 | sed 's/.*: *//; s/"//g' || echo unknown ;;
+  help|-h|--help|"")
+    cat <<EOF
+touchworkstation <command>
+
+  status        Service state + how to reach the app (default)
+  url           Print the app URL, IP and port
+  start         Start the app + nginx            (sudo)
+  stop          Stop the app                     (sudo)
+  restart       Restart the app + nginx          (sudo)
+  logs [N]      Last N lines of the app log (default 100)
+  follow        Live-tail the app log
+  credentials   Show URL + login password        (sudo)
+  password [p]  Set the login password           (sudo)
+  update        Pull + reinstall the latest release
+  version       Installed version
+  help          This help
+EOF
+    ;;
+  *) echo "Unknown command: $1"; echo "Run: touchworkstation help"; exit 1 ;;
+esac

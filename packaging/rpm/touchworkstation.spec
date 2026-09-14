@@ -56,11 +56,20 @@ mkdir -p %{buildroot}/usr/local/bin
 cp -a usr/local/bin/xdg-open %{buildroot}/usr/local/bin/xdg-open
 chmod 755 %{buildroot}/usr/local/bin/xdg-open
 
+# Management CLIs (touchworkstation + the hyphenated helpers). The payload's
+# usr/bin holds exactly these — xdg-open was routed to /usr/local/bin instead —
+# so copying the whole dir installs the management commands on RPM too, which
+# %install previously skipped entirely.
+mkdir -p %{buildroot}/usr/bin
+cp -a usr/bin/. %{buildroot}/usr/bin/
+chmod 755 %{buildroot}/usr/bin/touchworkstation*
+
 %files
 /opt/touchworkstation/app
 /opt/touchworkstation/runtime
 /usr/lib/systemd/system/touchworkstation.service
 /usr/local/bin/xdg-open
+/usr/bin/touchworkstation*
 
 %post
 set -e

@@ -35,12 +35,14 @@ install=touchworkstation.install
 source=("$pkgname::git+https://github.com/TouchWorkStation/TouchWorkstation.git"
         "touchworkstation.service"
         "touchworkstation-nginx.conf"
+        "touchworkstation"
         "touchworkstation-status"
         "touchworkstation-credentials"
         "touchworkstation-password"
         "touchworkstation-restart"
         "xdg-open")
 sha256sums=('SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'
@@ -84,7 +86,7 @@ package() {
   install -Dm644 "$srcdir/touchworkstation-nginx.conf" \
     "$pkgdir/etc/nginx/conf.d/touchworkstation.conf"
 
-  for bin in touchworkstation-status touchworkstation-credentials touchworkstation-password touchworkstation-restart; do
+  for bin in touchworkstation touchworkstation-status touchworkstation-credentials touchworkstation-password touchworkstation-restart; do
     install -Dm755 "$srcdir/$bin" "$pkgdir/usr/bin/$bin"
   done
 
