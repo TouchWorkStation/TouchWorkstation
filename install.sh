@@ -116,6 +116,14 @@ main() {
     check_pacman_lock
     url="$(pick_asset_url '\.pkg\.tar\.zst')"
     pkg="$(install_asset "$url")"
+    # The package depends on nodejs/npm/nginx/github-cli, which pacman -U pulls
+    # from the sync repos. On a fresh machine those repo databases may not be
+    # downloaded yet ("database file for 'core' does not exist"), so dependency
+    # resolution fails outright. Refresh the databases first so -U can resolve
+    # and install the deps. -Sy (not -Syu) keeps this to just what's needed to
+    # satisfy the package without forcing a full system upgrade mid-install.
+    log "Refreshing package databases so dependencies resolve..."
+    need_sudo pacman -Sy --noconfirm || true
     need_sudo pacman -U --noconfirm "$pkg"
     rm -f "$pkg"
 
