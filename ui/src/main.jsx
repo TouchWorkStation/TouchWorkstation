@@ -744,6 +744,7 @@ function TerminalScreen({go,omarchy,initialSessionId,cwd,pendingCommand}){
  // dead end.
  const homeBtn=bare&&<button className="term-tab home" onClick={()=>go('home')} title="Home"><House/></button>;
  return <div className={'terminal-screen'+(bare?' terminal-bare':'')}>
+  <TermAccessBar/>
   {(others.length>0)&&<div className="term-switch-bar">
    {homeBtn}
    <button className="term-tab active">{active==='main'?'Main':active}</button>
@@ -762,6 +763,28 @@ function TerminalScreen({go,omarchy,initialSessionId,cwd,pendingCommand}){
  </div>;
 }
 
+// A one-line banner at the top of the terminal showing how to reach this app
+// from another device — the URL you're on, plus the LAN IP and port — so it's
+// in front of you the moment you open a terminal. Copyable, and dismissible
+// per session. `touchworkstation url` / `status` print the same on the CLI.
+function TermAccessBar(){
+ const[a,setA]=useState(null);
+ const[hidden,setHidden]=useState(()=>{try{return sessionStorage.getItem('tw-access-hidden')==='1'}catch{return false}});
+ useEffect(()=>{api('/access').then(setA).catch(()=>{})},[]);
+ if(hidden||!a||!a.urls?.length)return null;
+ const primary=a.urls[0];
+ function copy(){try{navigator.clipboard?.writeText(primary)}catch{}api('/clipboard',{method:'POST',body:JSON.stringify({text:primary,source:'terminal'})}).catch(()=>{})}
+ function dismiss(){setHidden(true);try{sessionStorage.setItem('tw-access-hidden','1')}catch{}}
+ return <div className="term-access">
+  <Globe2/>
+  <div className="term-access-copy">
+   <strong>{primary}</strong>
+   <small>{a.lanIp?`LAN ${a.lanIp}:${a.port}`:`port ${a.port}`}{a.hostname?` · ${a.hostname}.local:${a.port}`:''}</small>
+  </div>
+  <button onClick={copy} title="Copy link"><Copy/></button>
+  <button onClick={dismiss} title="Hide" aria-label="Hide"><X/></button>
+ </div>;
+}
 function Files(){const[data,setData]=useState(null),[err,setErr]=useState('');async function load(p=''){try{setData(await api('/files'+(p?`?path=${encodeURIComponent(p)}`:'')));setErr('')}catch(e){setErr(e.message)}}useEffect(()=>{load()},[]);return <div className="page-pad"><PageTitle kicker="FILES" title="Your files" body="Browse the home folder without squeezing a desktop file manager onto your phone."/><div className="file-toolbar">{data?.parent&&<Button onClick={()=>load(data.parent)}><ArrowLeft/> Up</Button>}<code>{shortPath(data?.path)}</code></div>{err&&<div className="inline-error">{err}</div>}<div className="file-list">{data?.entries?.map(f=><button key={f.path} className="file-row" onClick={()=>f.directory&&load(f.path)}><span className={'file-icon '+(f.directory?'folder':'')}>{f.directory?<Folder/>:<FileText/>}</span><div><strong>{f.name}</strong><small>{f.directory?'Folder':'File'}</small></div>{f.directory&&<ChevronRight/>}</button>)}</div></div>}
 
 // ------------------------------ SETTINGS -----------------------------------

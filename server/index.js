@@ -659,6 +659,23 @@ function classifyConnection(req){
   }
   return 'other';
 }
+// How to reach this app from another device — shown as a banner when the
+// terminal opens. The port is taken from the Host you connected on (through
+// nginx that's 8088), falling back to TW_ACCESS_PORT or 8088. We list the
+// current address first, then the mDNS name, the LAN IP, and Tailscale if up.
+app.get('/api/access',auth,(req,res)=>{
+  const host=String(req.headers.host||'');
+  const port=(host.includes(':')?host.split(':').pop():'')||process.env.TW_ACCESS_PORT||'8088';
+  const proto=req.secure?'https':'http';
+  const hostname=os.hostname();
+  const lanIp=Object.values(os.networkInterfaces()).flat().find(x=>x&&x.family==='IPv4'&&!x.internal)?.address||null;
+  const urls=[];
+  if(host)urls.push(`${proto}://${host}`);
+  urls.push(`http://${hostname}.local:${port}`);
+  if(lanIp)urls.push(`http://${lanIp}:${port}`);
+  try{const ts=sync('tailscale ip -4 2>/dev/null',SPAWN_ENV);if(ts)urls.push(`http://${ts.trim()}:${port}`);}catch{}
+  res.json({hostname,lanIp,port,urls:[...new Set(urls)]});
+});
 app.get('/api/vpn/status',auth,(req,res)=>{
   const connectionType=classifyConnection(req);
   const installed=!!sync('command -v tailscale',SPAWN_ENV);
