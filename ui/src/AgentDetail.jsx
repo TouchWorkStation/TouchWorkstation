@@ -6,17 +6,31 @@
 import { useEffect, useState, useRef } from 'react';
 import {
   ArrowLeft, Plus, Bot, Play, Trash2, Send, X, Check,
-  LayoutGrid, MessageSquare,
+  LayoutGrid, MessageSquare, Eye,
 } from 'lucide-react';
 import { api, Button, Pill, agentStateMeta } from './main.jsx';
 
 const COLUMN_LABELS = { todo: 'To Do', in_progress: 'In Progress', done: 'Done' };
 const COLUMN_ORDER = ['todo', 'in_progress', 'done'];
 
-export function AgentDetail({ agentId, go, back }) {
+export function AgentDetail({ agentId, go, back, openProject }) {
   const [agent, setAgent] = useState(null);
   const [tab, setTab] = useState('chat'); // chat | board
   const [err, setErr] = useState('');
+
+  // Jump to the live preview of the workspace this agent is scoped to, so you
+  // can chat with the agent to make edits and then flip straight to seeing
+  // them render — without hunting back through nav. Resolves the agent's
+  // workspace path against the real projects list (DeveloperWorkspace needs a
+  // full project object, not just a path).
+  async function toWorkspace() {
+    if (!agent?.workspace || !openProject) return;
+    try {
+      const r = await api('/projects');
+      const proj = (r.projects || []).find((p) => p.path === agent.workspace);
+      if (proj) openProject(proj); else go('projects');
+    } catch { go('projects'); }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -49,6 +63,7 @@ export function AgentDetail({ agentId, go, back }) {
           {(() => { const state = agent.running ? agentStateMeta(agent.state) : null; return (
             <Pill tone={state ? state.tone : ''}>{state ? state.label : agent.runtimeInstalled ? 'Ready' : 'Setup'}</Pill>
           ); })()}
+          {agent.workspace && <Button onClick={toWorkspace}><Eye/> Preview</Button>}
           <Button className="primary" onClick={launch}><Play/> {agent.running ? 'Attach' : agent.runtimeInstalled ? 'Launch' : 'Install & Launch'}</Button>
         </div>
       </div>

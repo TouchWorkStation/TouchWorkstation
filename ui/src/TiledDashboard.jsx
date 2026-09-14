@@ -19,7 +19,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Cpu, Upload, Download, Folder, FileText, Save, TerminalSquare, ChevronUp,
   Code2, GitBranch, Box, Sparkles, ClipboardList, Keyboard, Settings as SettingsIcon,
-  Bot, House,
+  Bot, House, Grid3X3, CloudRain,
 } from 'lucide-react';
 import { api, usePoll } from './main.jsx';
 
@@ -46,13 +46,15 @@ const NAV_TARGETS = [
 // standard home screen's tiles.
 export const TILED_PANES = [
   { id: 'stats', name: 'System', description: 'CPU, memory, disk and network' },
+  { id: 'weather', name: 'Weather radar', description: 'Pixelated CLI-style precipitation radar' },
   { id: 'agents', name: 'AI CLIs', description: 'Claude Code, Codex, Antigravity' },
+  { id: 'apps', name: 'Apps', description: 'Installed apps, each a launcher tile' },
   { id: 'processes', name: 'Processes', description: 'Live top process list' },
   { id: 'files', name: 'Files', description: 'Browse and open files' },
   { id: 'editor', name: 'Editor', description: 'Edit the file you opened' },
   { id: 'terminal', name: 'Terminal', description: 'A live shell in a tile' },
 ];
-export const DEFAULT_TILED_PANES = ['stats', 'agents', 'processes', 'files', 'editor', 'terminal'];
+export const DEFAULT_TILED_PANES = ['stats', 'weather', 'agents', 'apps', 'processes', 'files', 'editor', 'terminal'];
 
 function fmtRate(bytesPerSec) {
   if (!bytesPerSec || bytesPerSec < 1024) return `${(bytesPerSec || 0).toFixed(0)} B/s`;
@@ -68,7 +70,9 @@ export default function TiledDashboard({ go, settings }) {
   // are dropped rather than rendered as a blank hole.
   const panes = {
     stats: <StatsPane key="stats" />,
+    weather: <WeatherRadarPane key="weather" />,
     agents: <AgentCliPane key="agents" go={go} />,
+    apps: <AppsPane key="apps" go={go} />,
     processes: <ProcessListPane key="processes" />,
     files: <FileTreePane key="files" onOpenFile={setOpenFile} />,
     editor: <EditorPane key="editor" path={openFile} />,
@@ -118,12 +122,12 @@ function AgentCliPane({ go }) {
   // (resolveOpen in server/agents.js) — the client just carries out whatever
   // it says. `attach` deliberately sends no command: the CLI is already
   // sitting in its own session, so re-sending one would type into its prompt.
-  async function run(rt, login) {
+  async function run(rt, opts = {}) {
     setMsg('');
     try {
       const r = await api(`/agents/runtimes/${rt.id}/open`, {
         method: 'POST',
-        body: JSON.stringify({ login: !!login, cwd: scope || undefined }),
+        body: JSON.stringify({ login: !!opts.login, apiKey: !!opts.apiKey, cwd: scope || undefined }),
       });
       go?.('terminal', {
         sessionId: r.sessionId,
@@ -160,7 +164,12 @@ function AgentCliPane({ go }) {
               <small>{rt.installed ? `Open in ${scopeName}` : 'Tap to install, then it opens'}</small>
             </button>
             {rt.installed && rt.canLogin && (
-              <button className="tile-agent-signin" onClick={() => run(rt, true)} title={`Sign in to ${rt.label}`}>sign in</button>
+              <button className="tile-agent-signin" onClick={() => run(rt, { login: true })} title={`Sign in to ${rt.label}`}>sign in</button>
+            )}
+            {rt.installed && rt.canApiKeyLogin && (
+              // Headless fallback for Codex when device-auth's account setting
+              // isn't on and the OAuth redirect can't complete from a phone.
+              <button className="tile-agent-signin" onClick={() => run(rt, { apiKey: true })} title={`Sign in to ${rt.label} with an API key`}>API key</button>
             )}
             <span className={'tile-agent-state' + (rt.installed ? ' ready' : '')}>
               {rt.installed ? 'open' : 'install'}
@@ -170,6 +179,105 @@ function AgentCliPane({ go }) {
         {runtimes && !list.length && <div className="tile-pane-empty">No CLI runtimes found.</div>}
         {!runtimes && <div className="tile-pane-empty">Loading…</div>}
       </div>
+    </Pane>
+  );
+}
+
+// ----------------------------------- Apps -----------------------------------
+
+// Every installed app from the curated registry (server/apps.js), each as its
+// own launcher tile — so the tiled home reflects what's actually installed and
+// updates as apps are added, instead of a fixed pane set. Launch reuses the
+// existing flows (terminal-launch / native launch / webview) rather than a
+// second copy of that logic.
+function AppsPane({ go }) {
+  const [apps, setApps] = useState(null);
+  const [msg, setMsg] = useState('');
+  const load = () => api('/apps').then((r) => setApps(r.apps || [])).catch(() => setApps([]));
+  useEffect(() => { load(); }, []);
+
+  async function open(a) {
+    setMsg('');
+    try {
+      if (a.kind === 'builtin') {
+        // Terminal/Files/Docker etc. are in-app views, not launched externally.
+        go?.(a.uiView || a.id);
+      } else if (a.kind === 'terminal-agent') {
+        const r = await api('/apps/terminal-launch', { method: 'POST', body: JSON.stringify({ id: a.id }) });
+        go?.('terminal', { sessionId: r.sessionId, cwd: r.cwd, pendingCommand: r.command });
+      } else if (a.kind === 'native') {
+        await api('/apps/launch', { method: 'POST', body: JSON.stringify({ id: a.id }) });
+        setMsg(`${a.name} launched on the desktop.`);
+      } else if (a.kind === 'webview' && a.url) {
+        window.open(a.url, '_blank', 'noopener');
+      }
+    } catch (e) { setMsg(e.message); }
+  }
+
+  // Installed (or configured builtins) first; a greyed, tappable "install"
+  // tile for the rest, rather than hiding them.
+  const installed = (apps || []).filter((a) => a.installed || a.kind === 'builtin' || a.configured);
+  const available = (apps || []).filter((a) => !(a.installed || a.kind === 'builtin' || a.configured));
+
+  return (
+    <Pane icon={Grid3X3} title="Apps" className="tile-apps">
+      {msg && <div className="tile-pane-error">{msg}</div>}
+      <div className="tile-apps-grid">
+        {[...installed, ...available].map((a) => (
+          <button key={a.id} className={'tile-app' + (installed.includes(a) ? '' : ' off')} onClick={() => open(a)}>
+            <Box />
+            <span>{a.name}</span>
+            {!installed.includes(a) && <em>install</em>}
+          </button>
+        ))}
+        {apps && !apps.length && <div className="tile-pane-empty">No apps found.</div>}
+        {!apps && <div className="tile-pane-empty">Loading…</div>}
+      </div>
+    </Pane>
+  );
+}
+
+// --------------------------------- Weather ----------------------------------
+
+// A phone-native replacement for omastorm (which is desktop-only Quickshell):
+// a real precipitation grid from /api/weather rendered as pixelated block
+// glyphs — the "radar written and displayed in the CLI" look the user asked
+// for. Dry weather renders as an empty field with the location/temp header,
+// which is honest rather than faking returns.
+const WX_CODES = {
+  0: 'Clear', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
+  45: 'Fog', 48: 'Rime fog', 51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle',
+  61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 66: 'Freezing rain', 67: 'Freezing rain',
+  71: 'Light snow', 73: 'Snow', 75: 'Heavy snow', 77: 'Snow grains',
+  80: 'Rain showers', 81: 'Rain showers', 82: 'Violent showers',
+  85: 'Snow showers', 86: 'Snow showers', 95: 'Thunderstorm', 96: 'Thunderstorm', 99: 'Thunderstorm',
+};
+// precipitation mm -> glyph + intensity class (green→yellow→red).
+function radarCell(mm) {
+  if (!mm || mm < 0.05) return { ch: '·', lvl: 0 }; // ·
+  if (mm < 0.5) return { ch: '░', lvl: 1 };          // ░
+  if (mm < 2) return { ch: '▒', lvl: 2 };            // ▒
+  if (mm < 6) return { ch: '▓', lvl: 3 };            // ▓
+  return { ch: '█', lvl: 4 };                         // █
+}
+function WeatherRadarPane() {
+  const [wx] = usePoll(() => api('/weather').catch(() => ({ ok: false, message: 'offline' })), 5 * 60 * 1000, []);
+  const header = wx?.ok
+    ? `${wx.place}${wx.temp != null ? ` · ${Math.round(wx.temp)}°C` : ''}${wx.code != null ? ` · ${WX_CODES[wx.code] || ''}` : ''}`
+    : (wx ? (wx.message || 'Unavailable') : 'Loading…');
+  return (
+    <Pane icon={CloudRain} title="Weather radar" className="tile-weather">
+      <div className="tile-wx-head">{header}</div>
+      {wx?.ok && wx.grid && (
+        <pre className="tile-wx-radar">
+          {wx.grid.map((row, r) => (
+            <div key={r}>
+              {row.map((mm, c) => { const cell = radarCell(mm); return <span key={c} className={'wx' + cell.lvl}>{cell.ch}</span>; })}
+            </div>
+          ))}
+        </pre>
+      )}
+      {wx && !wx.ok && <div className="tile-pane-empty">{wx.message || 'Radar unavailable.'}</div>}
     </Pane>
   );
 }

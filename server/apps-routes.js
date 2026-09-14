@@ -15,7 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { listApps, resolveNativeExec, getApp, resolveAppInstall } from './apps.js';
-import { claudeCodeAuthed } from './agents.js';
+import { claudeCodeAuthed, CLAUDE_LOGIN } from './agents.js';
 
 export function mountAppRoutes(app, { auth, HOME }) {
   app.get('/api/apps', auth, (req, res) => {
@@ -92,13 +92,16 @@ export function mountAppRoutes(app, { auth, HOME }) {
       }
       command = `${meta.installCommand} && ${meta.command}`;
     }
-    // Claude Code first-run auth: if it will be installed now, or is installed
-    // but not yet authenticated, route through `claude setup-token` first so
-    // sign-in completes from a phone instead of hitting the browser/localhost
-    // callback flow. (Same reasoning as the agent launch path.)
+    // Claude Code first-run auth: route through the SAME persisting login
+    // wrapper the CLI tiles and agent launches use (CLAUDE_LOGIN), not a bare
+    // `setup-token && claude` that discarded the token. This was the third,
+    // still-stale copy of that logic; sharing the one exported constant keeps
+    // all launch paths in lockstep. Once signed in (here or anywhere) the
+    // token lives in cli.env and claudeCodeAuthed() is true, so we skip
+    // straight to launching.
     if (id === 'claude-code' && (meta.installed === false || !claudeCodeAuthed())) {
       const base = meta.installed === false ? `${meta.installCommand} && ` : '';
-      command = `${base}claude setup-token && ${meta.command}`;
+      command = `${base}${CLAUDE_LOGIN}`;
     }
 
     res.json({ command, cwd, sessionId: `agent-${id}` });

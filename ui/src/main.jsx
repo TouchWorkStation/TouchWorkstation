@@ -237,7 +237,7 @@ function Router(p){
  switch(p.view){
    case'projects':return <Projects go={p.go}/>;
    case'project-detail':return <ProjectDetail item={p.navState?.item} go={p.go} back={()=>p.go('projects')} openProject={p.openProject}/>;
-   case'agents':return <Agents go={p.go} openAgent={p.openAgent} navState={p.navState}/>;case'agent-detail':return <AgentDetail agentId={p.navState?.agentId} go={p.go} back={()=>p.go('agents')}/>;
+   case'agents':return <Agents go={p.go} openAgent={p.openAgent} navState={p.navState}/>;case'agent-detail':return <AgentDetail agentId={p.navState?.agentId} go={p.go} back={()=>p.go('agents')} openProject={p.openProject}/>;
    case'apps':return <AppsV2 go={p.go} project={p.project}/>;
    case'webview':return <WebviewApp app={p.navState?.app} back={()=>p.go('apps')}/>;
    case'preview-full':return <PreviewFullscreen nav={p.navState} go={p.go}/>;
