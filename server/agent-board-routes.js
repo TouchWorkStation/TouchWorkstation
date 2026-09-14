@@ -29,17 +29,25 @@ function sessionRunning(agentId) {
   }
 }
 
-// Send text into the agent's live tmux session as if typed, followed by
-// Enter — as ONE atomic literal send with a real carriage return (\r, what a
-// physical Enter keypress actually produces at the pty level) appended
-// directly to the payload. Two separate send-keys calls (literal text, then
-// a separate 'Enter' key-name call) is a documented source of exactly the
-// 'text appears typed but never submits' symptom with some interactive
-// programs — bundling them removes that ambiguity entirely.
+// Send text into the agent's live tmux session as if typed, then submit.
+//
+// Claude Code and Codex are Ink (React-for-terminals) TUIs, and their
+// composer treats a carriage return bundled into the same literal keystroke
+// burst as a NEWLINE in the input, not "submit" — so bundling text+\r made
+// the message appear in their box and just sit there (reported live: GUI chat
+// typed but never sent even though the agent was running). The reliable fix
+// for these TUIs is to type the text literally, let the app process it, then
+// send Enter as its OWN key event a beat later — that's what actually submits.
+// The brief sleep is what gives the TUI time to render the typed text before
+// the Enter lands; without it the Enter can race ahead of the input.
 function sendToSession(agentId, text) {
   if (!sessionRunning(agentId)) return false;
+  const s = JSON.stringify(sessionName(agentId));
   try {
-    execSync(`tmux send-keys -t ${JSON.stringify(sessionName(agentId))} -l ${JSON.stringify(text + '\r')}`, { stdio: 'ignore' });
+    execSync(
+      `tmux send-keys -t ${s} -l ${JSON.stringify(text)}; sleep 0.2; tmux send-keys -t ${s} Enter`,
+      { stdio: 'ignore', shell: '/bin/bash' }
+    );
     return true;
   } catch {
     return false;

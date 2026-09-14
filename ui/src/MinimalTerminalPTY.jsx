@@ -37,6 +37,7 @@ export default function MinimalTerminalPTY({ sessionId = 'main', cwd, pendingCom
   const inputRef = useRef(null);
   const streamBuf = useRef('');
   const autoScrollRef = useRef(true);
+  const lastSize = useRef('');
 
   const [status, setStatus] = useState('connecting');
   const [authUrl, setAuthUrl] = useState(null);
@@ -111,6 +112,7 @@ export default function MinimalTerminalPTY({ sessionId = 'main', cwd, pendingCom
       requestAnimationFrame(() => {
         const el = bodyRef.current;
         if (el) el.scrollTop = el.scrollHeight;
+        sendMeasuredResize();
       });
     };
     setVVH();
@@ -156,6 +158,28 @@ export default function MinimalTerminalPTY({ sessionId = 'main', cwd, pendingCom
     setAtBottom(nowAtBottom);
   }
 
+  function sendMeasuredResize() {
+    const el = bodyRef.current, ws = wsRef.current;
+    if (!el || ws?.readyState !== WebSocket.OPEN) return;
+    let cols = 80, rows = 24;
+    try {
+      const probe = document.createElement('span');
+      probe.textContent = '0'.repeat(50);
+      probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;left:-9999px';
+      el.appendChild(probe);
+      const cw = probe.getBoundingClientRect().width / 50;
+      el.removeChild(probe);
+      const cs = getComputedStyle(el);
+      const lh = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.4;
+      if (cw > 0) cols = Math.max(20, Math.min(220, Math.floor((el.clientWidth - 6) / cw)));
+      if (lh > 0) rows = Math.max(6, Math.min(80, Math.floor(el.clientHeight / lh)));
+    } catch { /* fall back to 80x24 */ }
+    const key = `${cols}x${rows}`;
+    if (key === lastSize.current) return;
+    lastSize.current = key;
+    ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+  }
+
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const params = new URLSearchParams({ session: sessionId, ...(cwd ? { cwd } : {}) });
@@ -164,7 +188,10 @@ export default function MinimalTerminalPTY({ sessionId = 'main', cwd, pendingCom
     setStatus('connecting');
     ws.onopen = () => {
       setStatus('live');
-      ws.send(JSON.stringify({ type: 'resize', cols: 120, rows: 40 }));
+      // Size the PTY to the real phone width so a full-screen CLI (Claude
+      // Code / Codex) wraps to fit instead of rendering ~120 cols wide and
+      // running off-screen. See sendMeasuredResize.
+      sendMeasuredResize();
       if (pendingCommand) ws.send(JSON.stringify({ type: 'input', data: pendingCommand + '\r' }));
       refreshPane();
     };
