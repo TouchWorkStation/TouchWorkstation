@@ -765,6 +765,31 @@ function TerminalScreen({go,omarchy,initialSessionId,cwd,pendingCommand}){
 function Files(){const[data,setData]=useState(null),[err,setErr]=useState('');async function load(p=''){try{setData(await api('/files'+(p?`?path=${encodeURIComponent(p)}`:'')));setErr('')}catch(e){setErr(e.message)}}useEffect(()=>{load()},[]);return <div className="page-pad"><PageTitle kicker="FILES" title="Your files" body="Browse the home folder without squeezing a desktop file manager onto your phone."/><div className="file-toolbar">{data?.parent&&<Button onClick={()=>load(data.parent)}><ArrowLeft/> Up</Button>}<code>{shortPath(data?.path)}</code></div>{err&&<div className="inline-error">{err}</div>}<div className="file-list">{data?.entries?.map(f=><button key={f.path} className="file-row" onClick={()=>f.directory&&load(f.path)}><span className={'file-icon '+(f.directory?'folder':'')}>{f.directory?<Folder/>:<FileText/>}</span><div><strong>{f.name}</strong><small>{f.directory?'Folder':'File'}</small></div>{f.directory&&<ChevronRight/>}</button>)}</div></div>}
 
 // ------------------------------ SETTINGS -----------------------------------
+// One place to authenticate every AI CLI, so signing in is a once-per-machine
+// thing (like your computer's own logins) instead of a prompt at each agent
+// launch. Each action opens the CLI's real flow in a terminal; the credential
+// then persists on disk (cli.env for Claude, ~/.codex/auth.json for Codex,
+// etc.) and every later launch reuses it — the app never re-triggers login for
+// an already-signed-in CLI.
+function AiSignIn({go}){
+ const CLI=['claude-code','codex','antigravity'];
+ const[runtimes,setRuntimes]=useState(null);
+ useEffect(()=>{api('/agents/runtimes').then(r=>setRuntimes(r.runtimes||[])).catch(()=>setRuntimes([]))},[]);
+ async function act(rt,opts){try{const r=await api(`/agents/runtimes/${rt.id}/open`,{method:'POST',body:JSON.stringify(opts||{})});go('terminal',{sessionId:r.sessionId,cwd:r.cwd,pendingCommand:r.action==='attach'?undefined:r.command})}catch(e){/* surfaced in terminal */}}
+ const list=(runtimes||[]).filter(r=>CLI.includes(r.id));
+ return <div className="ai-signin">
+  {list.map(rt=><div key={rt.id} className="ai-signin-row">
+   <Bot/>
+   <div className="ai-signin-copy"><strong>{rt.label}</strong><small>{!rt.installed?'Not installed':rt.loggedIn?'Signed in':'Not signed in'}</small></div>
+   {!rt.installed&&rt.canInstall&&<button className="btn" onClick={()=>act(rt)}>Install</button>}
+   {rt.installed&&rt.canLogin&&<button className="btn" onClick={()=>act(rt,{login:true})}>{rt.loggedIn?'Re-sign in':'Sign in'}</button>}
+   {rt.installed&&rt.canApiKeyLogin&&<button className="btn" onClick={()=>act(rt,{apiKey:true})}>API key</button>}
+   <span className={'ai-signin-state'+(rt.installed&&rt.loggedIn?' ok':'')}>{!rt.installed?'install':rt.loggedIn?'ready':'sign in'}</span>
+  </div>)}
+  {runtimes&&!list.length&&<div className="empty-state">No AI CLIs found.</div>}
+  {!runtimes&&<div className="empty-state">Loading…</div>}
+ </div>;
+}
 function SettingsView({settings,setSettings,go}){const[vpn,setVpn]=useState(null),[github,setGithub]=useState(null),[msg,setMsg]=useState(''),[showRA,setShowRA]=useState(false),[showWP,setShowWP]=useState(false),[wpVersion,setWpVersion]=useState(0);const[me]=useLoad(()=>api('/me'),[]);const[status]=usePoll(()=>api('/status'),5000,[]);useEffect(()=>{api('/vpn/status').then(setVpn);api('/github/status').then(setGithub)},[]);
  const localUrl=me?.hostname?`http://${me.hostname}.local:8088`:null;
  const ipUrl=status?.ip?`http://${status.ip}:8088`:null;
@@ -779,7 +804,8 @@ function SettingsView({settings,setSettings,go}){const[vpn,setVpn]=useState(null
  </div>
  <Setting icon={Globe2} title="Access away from home" status={vpn?.connected?'Ready':'Home only'} text={vpn?.connected?'Your private remote connection is active.':'Do you want to access this computer when you\u2019re away from home? We\u2019ll walk you through a secure VPN.'}><Button className="primary" onClick={()=>setShowRA(true)}>{vpn?.connected?'Manage':'Yes, set it up'}</Button></Setting>
  <Setting icon={GitBranch} title="GitHub" status={github?.connected?'Connected':'Not connected'} text={github?.connected?`Connected as ${github.user||'your GitHub account'}.`:'Do you want to clone, pull and push your projects from your phone?'}><Button onClick={async()=>{if(github?.connected){go('projects');return}try{const sessionId=await resolveTerminalTarget('github-login');go('terminal',{pendingCommand:'gh auth login',sessionId})}catch{go('terminal',{pendingCommand:'gh auth login'})}}}>{github?.connected?'Manage':'Connect GitHub'}</Button></Setting>
- <Setting icon={Bot} title="AI Agents" status="Configurable" text="Agents are configured in the Agents screen — choose a runtime, scope it to a project, and set permissions."><Button onClick={()=>setMsg('Open the Agents screen to create and launch agents.')}>Go to Agents</Button></Setting>
+ <Setting icon={Bot} title="AI sign-in" status="One place" text="Sign in to each AI CLI once, here. It's your computer's own login — every agent and CLI launch reuses it, so you never sign in again per-agent."><AiSignIn go={go}/></Setting>
+ <Setting icon={Bot} title="AI Agents" status="Configurable" text="Agents are configured in the Agents screen — choose a runtime, scope it to a project, and set permissions."><Button onClick={()=>go('agents')}>Go to Agents</Button></Setting>
  <Setting icon={Palette} title="Appearance" status={themeLabel(settings?.theme)} text="Choose how TouchWorkstation feels. Your choice is saved and applied instantly."><div className="theme-picker">{[['aubergine','Aubergine','aub'],['charcoal','Charcoal','char'],['solar','Solar','sol']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.theme||'aubergine')===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,theme:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({theme:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
  <Setting icon={LayoutGrid} title="Interface" status={variantLabel(settings?.uiVariant)} text="Omarchy replaces the home screen and terminal with a full-black, keyboard-driven layout. This overrides whatever the installed build set by default."><div className="theme-picker">{[['standard','Standard','std'],['omarchy','Omarchy','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.uiVariant?settings.uiVariant:(BUILD_OMARCHY?'omarchy':'standard'))===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,uiVariant:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({uiVariant:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
  {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&<Setting icon={LayoutGrid} title="Home Layout" status={omarchyLayoutOf(settings)==='tiled'?'Tiled':'Classic'} text="Tiled shows several live, independently-usable panes at once — terminal, files, an editor, processes, and stats — like a real tiling window manager."><div className="theme-picker">{[['classic','Classic','std'],['tiled','Tiled','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+(omarchyLayoutOf(settings)===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,omarchyLayout:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({omarchyLayout:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>}

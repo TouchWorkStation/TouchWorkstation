@@ -481,7 +481,16 @@ export function claudeCodeAuthed() {
   // shell (which does source it) supply the token to `claude`.
   try {
     const envf = path.join(home, '.config', 'touchworkstation', 'cli.env');
-    return fs.readFileSync(envf, 'utf8').includes('CLAUDE_CODE_OAUTH_TOKEN');
+    if (fs.readFileSync(envf, 'utf8').includes('CLAUDE_CODE_OAUTH_TOKEN')) return true;
+  } catch { /* fall through */ }
+  // Signed in via Claude's OWN `claude` flow instead of ours — the token then
+  // lives in the OS keychain (no .credentials.json file), but ~/.claude.json
+  // records the account under "oauthAccount". Without this check we'd think
+  // the user is logged out and force `setup-token` on EVERY launch — the
+  // "why do I have to sign in again every time" bug. (Bare .claude.json alone
+  // is NOT proof — it exists unauthenticated too — so we require the marker.)
+  try {
+    return fs.readFileSync(path.join(home, '.claude.json'), 'utf8').includes('oauthAccount');
   } catch { return false; }
 }
 
