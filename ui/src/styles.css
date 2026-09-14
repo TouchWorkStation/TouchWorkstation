@@ -163,14 +163,33 @@
 .ahc-actions .ahc-del{width:38px}
 
 /* ===== agent detail (board + chat) ===== */
-.agent-detail{padding:14px;max-width:1400px;margin:auto;min-height:calc(100vh - 66px);display:flex;flex-direction:column}
-.ad-top{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+/* Fixed-height flex column so ONLY the chat stream scrolls — the page itself
+   never scrolls, which is what made the whole thing jump to the bottom. */
+.agent-detail{padding:14px;max-width:1400px;margin:auto;height:calc(100dvh - 58px);display:flex;flex-direction:column;overflow:hidden}
+.ad-top{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
 .ad-title{display:flex;align-items:center;gap:11px;flex:1;min-width:0}
 .ad-icon{width:42px;height:42px;border-radius:12px;background:rgba(233,84,32,.1);display:grid;place-items:center;color:#ee7950;flex:none}
 .ad-icon svg{width:20px;height:20px}
-.ad-title strong{display:block;font-size:17px}
-.ad-title small{display:block;font-size:11px;color:var(--faint);margin-top:2px}
-.ad-top-actions{display:flex;align-items:center;gap:9px}
+.ad-title strong{display:block;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ad-title small{display:block;font-size:11px;color:var(--faint);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ai-signin{display:flex;flex-direction:column;gap:8px}
+.ai-signin-row{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.02);padding:10px 12px}
+.ai-signin-row svg{width:18px;height:18px;color:#ee7950;flex:none}
+.ai-signin-copy{flex:1;min-width:0}
+.ai-signin-copy strong{display:block;font-size:13px}
+.ai-signin-copy small{display:block;font-size:11px;color:var(--faint)}
+.ai-signin-row .btn{padding:7px 11px;font-size:12px;flex:none}
+.ai-signin-state{flex:none;font-size:9px;letter-spacing:.05em;padding:3px 8px;border-radius:999px;border:1px solid var(--line2);color:var(--faint)}
+.ai-signin-state.ok{border-color:rgba(78,208,122,.5);color:var(--green)}
+.ad-top-actions{display:flex;align-items:center;gap:8px;flex:none}
+.ad-top-actions .btn{padding:8px 11px;font-size:12px}
+/* On a phone the title + 3 actions don't fit one row — give the actions their
+   own full-width row instead of wrapping/overlapping the title. */
+@media(max-width:560px){
+  .ad-title{flex:1 1 100%;order:1}
+  .ad-top .btn:first-child{order:0}
+  .ad-top-actions{order:2;flex:1 1 100%;justify-content:flex-end}
+}
 .ad-tabs{display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--line)}
 .ad-tabs button{border:0;background:transparent;color:#948c98;padding:11px 15px;font-size:13px;display:flex;align-items:center;gap:8px;border-bottom:2px solid transparent;margin-bottom:-1px}
 .ad-tabs button svg{width:16px;height:16px}
@@ -203,8 +222,8 @@
 .kanban-add-actions svg{width:14px;height:14px}
 
 /* chat */
-.agent-chat{flex:1;display:flex;flex-direction:column;min-height:60vh}
-.agent-chat-stream{flex:1;overflow:auto;display:flex;flex-direction:column;gap:12px;padding:6px 2px 12px}
+.agent-chat{flex:1;display:flex;flex-direction:column;min-height:0}
+.agent-chat-stream{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:12px;padding:6px 2px 12px}
 .ac-msg{display:flex;gap:9px;max-width:80%}
 .ac-msg.you{align-self:flex-end}
 .ac-msg.agent{align-self:flex-start}

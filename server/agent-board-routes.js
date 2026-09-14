@@ -97,13 +97,33 @@ function pollAgentReply(agentId) {
     // Unchanged since last check — if it's been stable long enough and
     // differs from what we already posted, capture it as the reply.
     if (st.stableSince && now - st.stableSince > 1400 && snap.trim() && snap !== st.lastPosted) {
-      const newText = extractNewTail(st.lastPosted, snap);
+      const newText = cleanReply(extractNewTail(st.lastPosted, snap));
       if (newText) addChatMessage(agentId, { role: 'agent', text: newText });
       paneState.set(agentId, { lastPosted: snap, lastSnapshot: snap, stableSince: st.stableSince });
     }
   } else {
     paneState.set(agentId, { lastPosted: st.lastPosted, lastSnapshot: snap, stableSince: now });
   }
+}
+
+// Strip the terminal noise that made chat bubbles unreadable: stray control
+// bytes / literal carriage returns, bare shell-prompt lines, and prompt+echo
+// lines (e.g. "~ ❯ Hello"). What's left is closer to the agent's actual reply
+// text. Not a perfect transcript — a TUI's rendered screen never is — but it
+// turns the raw dump into something that reads like a chat message.
+function cleanReply(text) {
+  return (text || '')
+    .split('\n')
+    .map((l) => l.replace(/\r/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').replace(/\\r\b/g, ''))
+    .filter((l) => {
+      const t = l.trim();
+      if (!t) return false;
+      if (/^[~/][^\s]*\s*[❯$#>%]/.test(t)) return false; // "~ ❯ cmd" prompt+echo
+      if (/^[❯$#>%]\s*/.test(t)) return false;           // bare "❯" / "$" prompt
+      return true;
+    })
+    .join('\n')
+    .trim();
 }
 
 // The pane is a full rolling screen, not an append log, so "new" content is

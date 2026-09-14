@@ -144,11 +144,22 @@ function AgentChat({ agentId, running }) {
   const [text, setText] = useState('');
   const [err, setErr] = useState('');
   const [note, setNote] = useState('');
-  const endRef = useRef(null);
+  const streamRef = useRef(null);
+  const atBottomRef = useRef(true);
 
   const load = () => api(`/agents/${agentId}/chat`).then((r) => setMessages(r.messages || [])).catch(() => {});
   useEffect(() => { load(); const t = setInterval(load, 4000); return () => { clearInterval(t); api(`/agents/${agentId}/chat/unwatch`, { method: 'POST', body: '{}' }).catch(() => {}); }; }, [agentId]);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  // Scroll the STREAM container (not the page) to the newest message, but only
+  // when the reader is already near the bottom — so scrolling up to re-read
+  // isn't yanked back down on every 4s poll.
+  useEffect(() => {
+    const el = streamRef.current;
+    if (el && atBottomRef.current) el.scrollTop = el.scrollHeight;
+  }, [messages]);
+  function onStreamScroll() {
+    const el = streamRef.current;
+    if (el) atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
 
   async function send() {
     const t = text.trim();
@@ -163,7 +174,7 @@ function AgentChat({ agentId, running }) {
 
   return (
     <div className="agent-chat">
-      <div className="agent-chat-stream">
+      <div className="agent-chat-stream" ref={streamRef} onScroll={onStreamScroll}>
         {messages.length === 0 && <div className="empty-state">No messages yet. {running ? 'Say something to the agent.' : 'Messages you send are saved; launch the agent to have it respond.'}</div>}
         {messages.map((m) => (
           <div key={m.id} className={'ac-msg ' + (m.role === 'you' ? 'you' : 'agent')}>
@@ -171,7 +182,6 @@ function AgentChat({ agentId, running }) {
             <div className="ac-bubble"><p>{m.text}</p></div>
           </div>
         ))}
-        <div ref={endRef}/>
       </div>
       {note && <div className="notice">{note}</div>}
       {err && <div className="inline-error">{err}</div>}
