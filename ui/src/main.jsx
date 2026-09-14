@@ -781,9 +781,16 @@ function AiSignIn({go}){
   {list.map(rt=><div key={rt.id} className="ai-signin-row">
    <Bot/>
    <div className="ai-signin-copy"><strong>{rt.label}</strong><small>{!rt.installed?'Not installed':rt.loggedIn?'Signed in':'Not signed in'}</small></div>
-   {!rt.installed&&rt.canInstall&&<button className="btn" onClick={()=>act(rt)}>Install</button>}
-   {rt.installed&&rt.canLogin&&<button className="btn" onClick={()=>act(rt,{login:true})}>{rt.loggedIn?'Re-sign in':'Sign in'}</button>}
-   {rt.installed&&rt.canApiKeyLogin&&<button className="btn" onClick={()=>act(rt,{apiKey:true})}>API key</button>}
+   {/* One primary action by state (Install / Sign in / Open), matching the
+       home tile. Codex keeps a secondary API-key option HERE only — this is
+       the fallback panel for anyone who can't use device-auth — so it's still
+       discoverable without cluttering the home tile. */}
+   {!rt.installed?(rt.canInstall&&<button className="btn" onClick={()=>act(rt)}>Install</button>)
+    :!rt.loggedIn?<>
+      <button className="btn" onClick={()=>act(rt,{login:true})}>Sign in</button>
+      {rt.canApiKeyLogin&&<button className="btn" onClick={()=>act(rt,{apiKey:true})}>API key</button>}
+    </>
+    :<button className="btn" onClick={()=>act(rt)}>Open</button>}
    <span className={'ai-signin-state'+(rt.installed&&rt.loggedIn?' ok':'')}>{!rt.installed?'install':rt.loggedIn?'ready':'sign in'}</span>
   </div>)}
   {runtimes&&!list.length&&<div className="empty-state">No AI CLIs found.</div>}

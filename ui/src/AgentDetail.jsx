@@ -40,7 +40,26 @@ export function AgentDetail({ agentId, go, back, openProject }) {
     // Agents list's own 5s poll — otherwise "Needs you" would only ever
     // reflect whatever it was the moment you opened the agent.
     const t = setInterval(load, 6000);
-    return () => { alive = false; clearInterval(t); };
+    // Track the visible viewport height so the panel (see .agent-detail CSS)
+    // fits exactly under the topbar and shrinks when the keyboard opens —
+    // same keyboard-avoidance the terminal uses. This is what keeps the page
+    // itself from scrolling; only the message stream does.
+    const setVVH = () => document.documentElement.style.setProperty('--tw-vvh', `${window.visualViewport?.height || window.innerHeight}px`);
+    setVVH();
+    window.addEventListener('resize', setVVH);
+    window.visualViewport?.addEventListener('resize', setVVH);
+    // The global mobile rule reserves body padding-bottom for the dock; on this
+    // fixed-height panel that extra padding is what still let the PAGE scroll.
+    // Drop it while this screen is mounted (the panel reserves its own dock
+    // space), and restore it on the way out.
+    const prevPad = document.body.style.paddingBottom;
+    document.body.style.paddingBottom = '0';
+    return () => {
+      alive = false; clearInterval(t);
+      window.removeEventListener('resize', setVVH);
+      window.visualViewport?.removeEventListener('resize', setVVH);
+      document.body.style.paddingBottom = prevPad;
+    };
   }, [agentId]);
 
   async function launch() {
@@ -57,13 +76,13 @@ export function AgentDetail({ agentId, go, back, openProject }) {
   return (
     <div className="agent-detail">
       <div className="ad-top">
-        <Button onClick={back}><ArrowLeft/> Agents</Button>
+        <Button onClick={back}><ArrowLeft/> <span>Agents</span></Button>
         <div className="ad-title"><span className="ad-icon"><Bot/></span><div><strong>{agent.name}</strong><small>{agent.runtimeLabel}{agent.model ? ` · ${agent.model}` : ''}</small></div></div>
         <div className="ad-top-actions">
           {(() => { const state = agent.running ? agentStateMeta(agent.state) : null; return (
             <Pill tone={state ? state.tone : ''}>{state ? state.label : agent.runtimeInstalled ? 'Ready' : 'Setup'}</Pill>
           ); })()}
-          {agent.workspace && <Button onClick={toWorkspace}><Eye/> Preview</Button>}
+          {agent.workspace && <Button onClick={toWorkspace}><Eye/> <span>Preview</span></Button>}
           <Button className="primary" onClick={launch}><Play/> {agent.running ? 'Attach' : agent.runtimeInstalled ? 'Launch' : 'Install & Launch'}</Button>
         </div>
       </div>
@@ -172,8 +191,17 @@ function AgentChat({ agentId, running }) {
     } catch (e) { setErr(e.message); }
   }
 
+  async function clearChat() {
+    try { await api(`/agents/${agentId}/chat`, { method: 'DELETE' }); setMessages([]); } catch (e) { setErr(e.message); }
+  }
+
   return (
     <div className="agent-chat">
+      {messages.length > 0 && (
+        <div className="agent-chat-bar">
+          <button className="agent-chat-clear" onClick={clearChat}><Trash2/> Clear</button>
+        </div>
+      )}
       <div className="agent-chat-stream" ref={streamRef} onScroll={onStreamScroll}>
         {messages.length === 0 && <div className="empty-state">No messages yet. {running ? 'Say something to the agent.' : 'Messages you send are saved; launch the agent to have it respond.'}</div>}
         {messages.map((m) => (

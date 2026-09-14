@@ -156,26 +156,25 @@ function AgentCliPane({ go }) {
     >
       {msg && <div className="tile-pane-error">{msg}</div>}
       <div className="tile-agents-list">
-        {list.map((rt) => (
-          <div key={rt.id} className="tile-agent-row">
-            <Bot />
-            <button className="tile-agent-main" onClick={() => run(rt)}>
-              <strong>{rt.label}</strong>
-              <small>{rt.installed ? `Open in ${scopeName}` : 'Tap to install, then it opens'}</small>
-            </button>
-            {rt.installed && rt.canLogin && (
-              <button className="tile-agent-signin" onClick={() => run(rt, { login: true })} title={`Sign in to ${rt.label}`}>sign in</button>
-            )}
-            {rt.installed && rt.canApiKeyLogin && (
-              // Headless fallback for Codex when device-auth's account setting
-              // isn't on and the OAuth redirect can't complete from a phone.
-              <button className="tile-agent-signin" onClick={() => run(rt, { apiKey: true })} title={`Sign in to ${rt.label} with an API key`}>API key</button>
-            )}
-            <span className={'tile-agent-state' + (rt.installed ? ' ready' : '')}>
-              {rt.installed ? 'open' : 'install'}
-            </span>
-          </div>
-        ))}
+        {list.map((rt) => {
+          // ONE action per row, by auth state: not installed → Install;
+          // installed but not signed in → Sign in; signed in → Open. No stack
+          // of buttons. (Codex's API-key path stays available in the terminal,
+          // not on the tile.)
+          const action = !rt.installed ? { label: 'Install', hint: 'Tap to install, then it opens', opts: undefined }
+            : !rt.loggedIn ? { label: 'Sign in', hint: `Sign in to ${rt.label}`, opts: { login: true } }
+            : { label: 'Open', hint: `Open in ${scopeName}`, opts: undefined };
+          return (
+            <div key={rt.id} className="tile-agent-row">
+              <Bot />
+              <button className="tile-agent-main" onClick={() => run(rt, action.opts)}>
+                <strong>{rt.label}</strong>
+                <small>{action.hint}</small>
+              </button>
+              <button className={'tile-agent-act' + (action.label === 'Open' ? ' ready' : '')} onClick={() => run(rt, action.opts)}>{action.label}</button>
+            </div>
+          );
+        })}
         {runtimes && !list.length && <div className="tile-pane-empty">No CLI runtimes found.</div>}
         {!runtimes && <div className="tile-pane-empty">Loading…</div>}
       </div>
