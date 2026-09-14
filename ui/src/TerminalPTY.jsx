@@ -100,6 +100,8 @@ export default function TerminalPTY({ sessionId = 'main', cwd, pendingCommand })
   // without needing to re-subscribe on every render.
   const autoScrollRef = useRef(true);
 
+  const lastSize = useRef('');
+
   const [status, setStatus] = useState('connecting'); // connecting | live | disconnected
   const [authUrl, setAuthUrl] = useState(null);
   const [paneText, setPaneText] = useState('');
@@ -136,6 +138,9 @@ export default function TerminalPTY({ sessionId = 'main', cwd, pendingCommand })
       requestAnimationFrame(() => {
         const el = bodyRef.current;
         if (el) el.scrollTop = el.scrollHeight;
+        // The visible grid changed size (keyboard opened/closed, rotation) —
+        // re-tell the PTY so the CLI reflows to the new width/height.
+        sendMeasuredResize();
       });
     };
     setVVH();
@@ -169,6 +174,32 @@ export default function TerminalPTY({ sessionId = 'main', cwd, pendingCommand })
     autoScrollRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
   }
 
+  // Measure the real character cell of the viewport and tell the PTY how many
+  // cols/rows actually fit, so a full-screen CLI wraps to the phone instead of
+  // rendering at a fixed 120 cols and running off-screen. Deduped so viewport
+  // events (keyboard open/close) don't spam tmux with identical resizes.
+  function sendMeasuredResize() {
+    const el = bodyRef.current, ws = wsRef.current;
+    if (!el || ws?.readyState !== WebSocket.OPEN) return;
+    let cols = 80, rows = 24;
+    try {
+      const probe = document.createElement('span');
+      probe.textContent = '0'.repeat(50);
+      probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;left:-9999px';
+      el.appendChild(probe);
+      const cw = probe.getBoundingClientRect().width / 50;
+      el.removeChild(probe);
+      const cs = getComputedStyle(el);
+      const lh = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.4;
+      if (cw > 0) cols = Math.max(20, Math.min(220, Math.floor((el.clientWidth - 6) / cw)));
+      if (lh > 0) rows = Math.max(6, Math.min(80, Math.floor(el.clientHeight / lh)));
+    } catch { /* fall back to 80x24 */ }
+    const key = `${cols}x${rows}`;
+    if (key === lastSize.current) return;
+    lastSize.current = key;
+    ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+  }
+
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const params = new URLSearchParams({ session: sessionId, ...(cwd ? { cwd } : {}) });
@@ -178,9 +209,12 @@ export default function TerminalPTY({ sessionId = 'main', cwd, pendingCommand })
 
     ws.onopen = () => {
       setStatus('live');
-      // Fixed, generous size — nothing here measures a real character grid
-      // anymore, so there's no pixel-perfect size to compute.
-      ws.send(JSON.stringify({ type: 'resize', cols: 120, rows: 40 }));
+      // Size the PTY (and therefore tmux, and therefore any full-screen TUI
+      // like Claude Code / Codex running in it) to the ACTUAL phone width.
+      // The old fixed 120x40 made those CLIs render ~120 columns wide, so
+      // their boxed UI ran way off the right edge of the screen. Measured
+      // from the real character cell so the CLI wraps to fit.
+      sendMeasuredResize();
       if (pendingCommand) ws.send(JSON.stringify({ type: 'input', data: pendingCommand + '\r' }));
       refreshPane();
     };
