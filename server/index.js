@@ -525,6 +525,38 @@ app.post('/api/settings',auth,(req,res)=>{
 // (open-meteo returns an array for multiple lat/lon) — no image decoding, no
 // new dependency, no API key. Cached briefly since radar only updates ~10min.
 let weatherCache = { at: 0, data: null };
+// Land/water mask is STATIC (terrain doesn't move), so cache it for the life
+// of the process keyed by the grid — no need to re-fetch elevation every time.
+const landCache = new Map();
+async function landMask(lats, lons, COLS, ROWS, key) {
+  if (landCache.has(key)) return landCache.get(key);
+  // open-meteo's elevation API returns terrain elevation per point (0 over the
+  // sea). elevation > 0 ⇒ land — a real coastline mask in one request, no
+  // image decoding and no extra dependency. Coastal land at exactly 0m may read
+  // as water; fine for an ASCII base map.
+  let land = null;
+  try {
+    // The elevation API caps at 100 coordinates per request (the forecast API
+    // allows more), so batch the grid into chunks of 100 and concatenate.
+    const CHUNK = 100;
+    const elev = [];
+    for (let i = 0; i < lats.length; i += CHUNK) {
+      const la = lats.slice(i, i + CHUNK), lo = lons.slice(i, i + CHUNK);
+      const eu = `https://api.open-meteo.com/v1/elevation?latitude=${la.join(',')}&longitude=${lo.join(',')}`;
+      const ej = await (await fetch(eu)).json();
+      if (!Array.isArray(ej?.elevation)) throw new Error('bad elevation response');
+      elev.push(...ej.elevation);
+    }
+    land = [];
+    for (let r = 0; r < ROWS; r++) {
+      const row = [];
+      for (let c = 0; c < COLS; c++) { const e = elev[r * COLS + c]; row.push(typeof e === 'number' && e > 0); }
+      land.push(row);
+    }
+  } catch { land = null; /* pane just skips the base map */ }
+  landCache.set(key, land);
+  return land;
+}
 app.get('/api/weather', auth, async (req, res) => {
   try {
     if (weatherCache.data && Date.now() - weatherCache.at < 5 * 60 * 1000) return res.json(weatherCache.data);
@@ -553,13 +585,14 @@ app.get('/api/weather', auth, async (req, res) => {
       for (let c = 0; c < COLS; c++) row.push(Number(arr[r * COLS + c]?.current?.precipitation) || 0);
       grid.push(row);
     }
+    const land = await landMask(lats, lons, COLS, ROWS, `${lat.toFixed(2)},${lon.toFixed(2)}:${COLS}x${ROWS}`);
     const center = arr[Math.floor(ROWS / 2) * COLS + Math.floor(COLS / 2)]?.current || arr[0]?.current || {};
     const data = {
       ok: true,
       place: place || `${lat.toFixed(2)}, ${lon.toFixed(2)}`,
       temp: center.temperature_2m ?? null,
       code: center.weather_code ?? null,
-      cols: COLS, rows: ROWS, grid,
+      cols: COLS, rows: ROWS, grid, land,
       at: new Date().toISOString(),
     };
     weatherCache = { at: Date.now(), data };

@@ -251,13 +251,18 @@ const WX_CODES = {
   80: 'Rain showers', 81: 'Rain showers', 82: 'Violent showers',
   85: 'Snow showers', 86: 'Snow showers', 95: 'Thunderstorm', 96: 'Thunderstorm', 99: 'Thunderstorm',
 };
-// precipitation mm -> glyph + intensity class (green→yellow→red).
-function radarCell(mm) {
-  if (!mm || mm < 0.05) return { ch: '·', lvl: 0 }; // ·
-  if (mm < 0.5) return { ch: '░', lvl: 1 };          // ░
-  if (mm < 2) return { ch: '▒', lvl: 2 };            // ▒
-  if (mm < 6) return { ch: '▓', lvl: 3 };            // ▓
-  return { ch: '█', lvl: 4 };                         // █
+// Each cell renders precipitation on TOP of a land/water base map — the
+// NEXRAD-over-a-map look, in ASCII. Precip (a real radar return) wins; where
+// it's dry, show the terrain: land as a faint block, sea as a dim dot.
+function radarCell(mm, isLand) {
+  if (mm >= 6) return { ch: '█', cls: 'wx4' };
+  if (mm >= 2) return { ch: '▓', cls: 'wx3' };
+  if (mm >= 0.5) return { ch: '▒', cls: 'wx2' };
+  if (mm >= 0.05) return { ch: '░', cls: 'wx1' };
+  // Dry: draw the base map instead of an empty field.
+  if (isLand === true) return { ch: '▒', cls: 'wxland' };
+  if (isLand === false) return { ch: '·', cls: 'wxsea' };
+  return { ch: '·', cls: 'wx0' }; // no land data available
 }
 function WeatherRadarPane() {
   const [wx] = usePoll(() => api('/weather').catch(() => ({ ok: false, message: 'offline' })), 5 * 60 * 1000, []);
@@ -271,7 +276,7 @@ function WeatherRadarPane() {
         <pre className="tile-wx-radar">
           {wx.grid.map((row, r) => (
             <div key={r}>
-              {row.map((mm, c) => { const cell = radarCell(mm); return <span key={c} className={'wx' + cell.lvl}>{cell.ch}</span>; })}
+              {row.map((mm, c) => { const cell = radarCell(mm, wx.land?.[r]?.[c]); return <span key={c} className={cell.cls}>{cell.ch}</span>; })}
             </div>
           ))}
         </pre>
