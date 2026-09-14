@@ -568,6 +568,13 @@ html[data-theme="solar"] body{background:#1a1206}
 /* ===== Omarchy/Arch terminal — full-screen, fixed to the viewport ===== */
 .terminal-bare{position:fixed;left:0;right:0;top:var(--tw-vv-top, 0px);height:var(--tw-vvh, 100dvh);z-index:30;background:#000}
 .terminal-bare .term-switch-bar{background:#000;border-bottom:1px solid rgba(255,255,255,.1);padding-top:calc(env(safe-area-inset-top) + 8px)}
+/* The access banner is the TOPMOST element in the bare/fixed Omarchy terminal,
+   so IT must clear the notch/status bar (the switch bar's own top padding was
+   doing that before) — otherwise the banner renders under the status bar and
+   looks like it isn't there. When the banner is present, drop the switch bar's
+   now-redundant top padding so there's no double gap. */
+.terminal-bare .term-access{padding-top:calc(env(safe-area-inset-top) + 8px)}
+.terminal-bare .term-access + .term-switch-bar{padding-top:8px}
 .terminal-bare .term-tab{background:transparent;border-color:rgba(255,255,255,.16);color:#8a8a8a;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .terminal-bare .term-tab.active{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.35);color:#fff}
 .terminal-bare .term-tab.add{color:#7ee787;border-style:dashed}
