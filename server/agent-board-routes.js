@@ -9,7 +9,7 @@
 import { execSync } from 'child_process';
 import {
   initBoard, COLUMNS, tasksForAgent, createTask, updateTask, deleteTask, moveTask,
-  chatForAgent, addChatMessage,
+  chatForAgent, addChatMessage, clearChat,
 } from './agent-board.js';
 
 // agentId already looks like "agent-<hash>" (that's the id format agents are
@@ -198,6 +198,14 @@ export function mountBoardRoutes(app, { auth, stateDir }) {
   // Client calls this when leaving the chat screen, so we're not polling
   // tmux panes for agents nobody is currently looking at.
   app.post('/api/agents/:id/chat/unwatch', auth, (req, res) => {
+    unwatchAgentReplies(req.params.id);
+    res.json({ ok: true });
+  });
+  // Wipe the thread — clears out old terminal-dump messages from before the
+  // reply-cleaning fix. Also re-baselines the pane so the next capture starts
+  // fresh instead of re-posting the current screen as a "reply".
+  app.delete('/api/agents/:id/chat', auth, (req, res) => {
+    clearChat(req.params.id);
     unwatchAgentReplies(req.params.id);
     res.json({ ok: true });
   });

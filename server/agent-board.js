@@ -109,6 +109,15 @@ export function addChatMessage(agentId, { role, text }) {
   return msg;
 }
 
+// Wipe an agent's chat thread — for clearing out old, pre-fix terminal-dump
+// messages without deleting the agent itself.
+export function clearChat(agentId) {
+  const obj = allChat();
+  delete obj[agentId];
+  saveChat(obj);
+  return { cleared: true };
+}
+
 // When an agent is deleted, clean up its board + chat too.
 export function purgeAgent(agentId) {
   saveTasks(allTasks().filter((t) => t.agentId !== agentId));
