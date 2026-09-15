@@ -131,7 +131,7 @@ let runners=new Map();
 function parseCookies(req){return Object.fromEntries((req.headers.cookie||'').split(';').map(x=>x.trim()).filter(Boolean).map(x=>{const i=x.indexOf('=');return [x.slice(0,i),decodeURIComponent(x.slice(i+1))]}));}
 function auth(req,res,next){try{const t=parseCookies(req).tw_session||req.headers.authorization?.replace('Bearer ','');if(!t)throw 0;req.user=jwt.verify(t,JWT_SECRET);next()}catch{res.status(401).json({error:'Not authenticated'})}}
 app.post('/api/login',(req,res)=>{if(req.body.password!==APP_PASSWORD)return res.status(401).json({error:'Invalid password'});const token=jwt.sign({sub:os.userInfo().username},JWT_SECRET,{expiresIn:'30d'});res.setHeader('Set-Cookie',`tw_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`);res.json({ok:true,mustChangePassword:PW_MUST_CHANGE})});
-app.get('/api/me',auth,(req,res)=>res.json({hostname:os.hostname(),user:os.userInfo().username,version:'1.0.0-beta.43',build:BUILD_SHA,startedAt:PROCESS_STARTED_AT,mustChangePassword:PW_MUST_CHANGE}));
+app.get('/api/me',auth,(req,res)=>res.json({hostname:os.hostname(),user:os.userInfo().username,version:'1.0.0-beta.44',build:BUILD_SHA,startedAt:PROCESS_STARTED_AT,mustChangePassword:PW_MUST_CHANGE}));
 
 // Rewrite APP_PASSWORD= (and clear PW_MUST_CHANGE) in the env file in place,
 // preserving every other line, so systemd/postinst keep reading the same
