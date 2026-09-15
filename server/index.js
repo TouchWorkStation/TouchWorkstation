@@ -512,8 +512,9 @@ app.post('/api/settings',auth,(req,res)=>{
     if(Array.isArray(t)&&t.every(x=>typeof x==='string'))c.tiledPanes=t;
   }
   if('tiledPalette' in body&&(body.tiledPalette==='mono'||body.tiledPalette==='color'))c.tiledPalette=body.tiledPalette;
+  if('tiledGlass' in body)c.tiledGlass=!!body.tiledGlass;
   saveConfig(c);
-  res.json({ok:true,theme:c.theme,homeTiles:c.homeTiles,uiVariant:c.uiVariant,omarchyLayout:c.omarchyLayout,tiledPanes:c.tiledPanes,tiledPalette:c.tiledPalette});
+  res.json({ok:true,theme:c.theme,homeTiles:c.homeTiles,uiVariant:c.uiVariant,omarchyLayout:c.omarchyLayout,tiledPanes:c.tiledPanes,tiledPalette:c.tiledPalette,tiledGlass:c.tiledGlass});
 });
 
 // ---- weather radar (CLI-style tile) --------------------------------------

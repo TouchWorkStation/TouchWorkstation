@@ -114,6 +114,10 @@ function App(){
  // mono look. Only meaningful when the tiled skin is active.
  const tiledColor=tiledSkin&&settings?.tiledPalette==='color';
  useEffect(()=>{document.documentElement.classList.toggle('tiled-color',tiledColor)},[tiledColor]);
+ // Liquid-glass tiled theme: translucent, blurred panes over the Omarchy
+ // wallpaper. Only meaningful with the tiled skin active.
+ const tiledGlass=tiledSkin&&!!settings?.tiledGlass;
+ useEffect(()=>{document.documentElement.classList.toggle('tiled-glass',tiledGlass)},[tiledGlass]);
  if(loading)return <Splash/>;
  if(!me)return <Login onDone={async(pw)=>{setLoginPw(pw);setMe(await api('/me'));setSettings(await api('/settings'))}}/>;
  // A fresh install ships a temporary generated password. Nothing else in the
@@ -232,7 +236,7 @@ function MobileDock({view,project,go}){const items=[['home',Home,'Home'],['apps'
 // the top-left hamburger, is the only mobile nav surface there, so it's
 // handed the Omarchy-specific destination list instead of the standard
 // shell's NAV in that case.
-function MobileSheet({items=NAV,go,onClose,onMachines}){return <><div className="mobile-sheet-backdrop" onClick={onClose}/><div className="mobile-sheet"><div className="sheet-handle"/>{onMachines&&<button onClick={onMachines}><Monitor/><span>Switch machine</span><ChevronRight/></button>}{items.map(([id,Icon,label])=><button key={id} onClick={()=>go(id)}><Icon/><span>{label}</span><ChevronRight/></button>)}</div></>}
+function MobileSheet({items=NAV,go,onClose,onMachines}){return <><div className="mobile-sheet-backdrop" onClick={onClose}/><div className="mobile-sheet"><div className="sheet-handle"/>{items.map(([id,Icon,label])=><button key={id} onClick={()=>go(id)}><Icon/><span>{label}</span><ChevronRight/></button>)}{onMachines&&<button className="sheet-machines" onClick={onMachines}><Monitor/><span>Switch machine</span><ChevronRight/></button>}</div></>}
 
 // The multi-machine switcher: your saved TouchWorkstation machines, the ones
 // auto-detected on the network (mDNS), and a manual add for VMs / Tailscale that
@@ -881,6 +885,7 @@ function SettingsView({settings,setSettings,go}){const[vpn,setVpn]=useState(null
  {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&<Setting icon={LayoutGrid} title="Home Layout" status={omarchyLayoutOf(settings)==='tiled'?'Tiled':'Classic'} text="Tiled shows several live, independently-usable panes at once — terminal, files, an editor, processes, and stats — like a real tiling window manager."><div className="theme-picker">{[['classic','Classic','std'],['tiled','Tiled','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+(omarchyLayoutOf(settings)===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,omarchyLayout:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({omarchyLayout:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>}
  {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&omarchyLayoutOf(settings)==='tiled'&&<Setting icon={LayoutGrid} title="Tiled panes" status={`${(settings?.tiledPanes?.length?settings.tiledPanes:DEFAULT_TILED_PANES).length} shown`} text="Choose which panes appear on the tiled home screen. Turn off the ones you don't use to give the rest more room."><TiledPaneSettings settings={settings} setSettings={setSettings}/></Setting>}
  {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&omarchyLayoutOf(settings)==='tiled'&&<Setting icon={Palette} title="Tiled colours" status={settings?.tiledPalette==='color'?'Colour':'Mono'} text="Mono keeps every pane green. Colour gives each pane its own accent border and icon colour, so they read apart at a glance."><div className="theme-picker">{[['mono','Mono','std'],['color','Colour','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.tiledPalette||'mono')===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,tiledPalette:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({tiledPalette:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>}
+ {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&omarchyLayoutOf(settings)==='tiled'&&<Setting icon={ImageIcon} title="Liquid glass" status={settings?.tiledGlass?'On':'Off'} text="Translucent, frosted tiles floating over your Omarchy wallpaper. Set a wallpaper below for it to show through."><div className="theme-picker">{[['off','Off','std'],['on','Glass','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+(((settings?.tiledGlass?'on':'off'))===id?' active':'')} onClick={async()=>{const on=id==='on';setSettings(s=>({...s,tiledGlass:on}));try{await api('/settings',{method:'POST',body:JSON.stringify({tiledGlass:on})})}catch{}}}><i/>{label}</button>)}</div></Setting>}
  <Setting icon={ImageIcon} title="Wallpaper" status="Omarchy home screen" text="Upload and crop a photo for the Omarchy home screen's background.">
   <div className="wp-setting-row">
    <img className="wp-thumb" src={`/wallpaper.jpg?v=${wpVersion}`} alt="" onError={(e)=>{e.currentTarget.style.visibility='hidden'}} onLoad={(e)=>{e.currentTarget.style.visibility='visible'}}/>

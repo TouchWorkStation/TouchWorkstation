@@ -9,9 +9,18 @@
 .top-machine{display:flex;align-items:center;gap:6px;border:1px solid var(--line2);background:rgba(255,255,255,.03);color:#c6bfcb;border-radius:999px;padding:5px 10px;font-size:11px;max-width:170px}
 .top-machine>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .top-machine svg:last-child{width:13px;flex:none}
-/* Machine switcher sheet */
-.machine-sheet{position:fixed;z-index:60;left:50%;bottom:0;transform:translateX(-50%);width:min(560px,100%);max-height:85dvh;overflow-y:auto;background:#141019;border:1px solid var(--line2);border-radius:20px 20px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));box-shadow:var(--shadow)}
-@media(min-width:821px){.machine-sheet{bottom:auto;top:56px;right:16px;left:auto;transform:none;border-radius:16px;max-height:80dvh}}
+/* Sets the popup nav's "Switch machine" apart at the bottom. */
+.mobile-sheet .sheet-machines{margin-top:6px;border-top:1px solid var(--line2)!important;color:#e6a48d}
+.mobile-sheet .sheet-machines svg:first-child{color:var(--accent)}
+/* Machine switcher sheet — slides up fluidly from the bottom (drops from the
+   top-right on desktop), with the backdrop fading in. */
+@keyframes tw-sheet-up{from{transform:translateX(-50%) translateY(100%)}to{transform:translateX(-50%) translateY(0)}}
+@keyframes tw-fade{from{opacity:0}to{opacity:1}}
+.machine-sheet{position:fixed;z-index:60;left:50%;bottom:0;transform:translateX(-50%);width:min(560px,100%);max-height:85dvh;overflow-y:auto;background:#141019;border:1px solid var(--line2);border-radius:20px 20px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));box-shadow:var(--shadow);animation:tw-sheet-up .26s cubic-bezier(.22,1,.36,1);will-change:transform}
+.machine-sheet+*,.mobile-sheet-backdrop{animation:tw-fade .2s ease}
+.machine-sheet .ms-row,.machine-sheet .ms-current,.machine-sheet .ms-addbtn,.machine-sheet .ms-add{transition:background .15s ease,border-color .15s ease,transform .12s ease}
+.machine-sheet .ms-row:active,.machine-sheet .ms-addbtn:active{transform:scale(.99)}
+@media(min-width:821px){.machine-sheet{bottom:auto;top:56px;right:16px;left:auto;transform:none;border-radius:16px;max-height:80dvh;animation:tw-fade .18s ease}}
 .ms-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .ms-head strong{font-size:16px}
 .ms-x{width:32px;height:32px;border:0;background:rgba(255,255,255,.05);color:#c6bfcb;border-radius:9px;display:grid;place-items:center}
@@ -962,6 +971,33 @@ html.omarchy-build,html.omarchy-build body,html.omarchy-build #root{background:#
    blue dot — so returns read against a coastline like real radar. */
 .tile-wx-radar .wxland{color:#2f4f39}
 .tile-wx-radar .wxsea{color:#22364d}
+
+/* ---- Liquid glass tiled theme --------------------------------------------
+   Translucent, frosted panes floating over the Omarchy wallpaper. Layered on
+   the tiled skin via <html class="tiled-glass"> (see main.jsx). Falls back to a
+   dark ground if no wallpaper is set, so it still looks intentional. */
+.tiled-glass .tiled-dash{
+  background:
+    linear-gradient(rgba(0,0,0,.34),rgba(0,0,0,.5)),
+    url(/wallpaper.jpg) center/cover no-repeat fixed,
+    #0a0a12;
+}
+.tiled-glass .tile-pane{
+  background:rgba(18,18,26,.40);
+  -webkit-backdrop-filter:blur(20px) saturate(1.3);
+  backdrop-filter:blur(20px) saturate(1.3);
+  border:1px solid rgba(255,255,255,.18);
+  box-shadow:0 10px 34px rgba(0,0,0,.4);
+}
+.tiled-glass .tile-pane-head{border-bottom-color:rgba(255,255,255,.14);background:rgba(255,255,255,.03)}
+/* Let the frosted pane show through the panes' own solid inner surfaces. */
+.tiled-glass .tile-stat,.tiled-glass .tile-proc-row.tile-proc-head,.tiled-glass .tile-wx-radar{background:transparent}
+.tiled-glass .tile-stats-grid{background:rgba(255,255,255,.12)}
+.tiled-glass .tile-app,.tiled-glass .tile-agent-row,.tiled-glass .tile-agent-act,.tiled-glass .tile-file-row,.tiled-glass .tile-proc-row{background:rgba(255,255,255,.05)}
+.tiled-glass .tile-term-body,.tiled-glass .tile-editor-textarea{background:transparent}
+/* Frosted nav pills + a touch of glass on the switch/compose rows. */
+.tiled-glass .tiled-nav-scroll button{background:rgba(20,20,28,.5);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.tiled-glass .tile-term-input-row,.tiled-glass .tile-pane-head{-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
 .tile-term-input-row{display:flex;align-items:center;gap:6px;border-top:1px solid rgba(255,255,255,.12);padding:6px 10px}
 .tile-term-input-row span{color:#7ee787}
 .tile-term-input-row input{flex:1;border:0;background:transparent;color:#e2e2e2;font:12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;outline:none}
