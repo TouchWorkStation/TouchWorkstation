@@ -6,6 +6,8 @@ printf '%-20s %s\n' 'Web application' "$WEB"
 printf '%-20s %s\n' 'nginx' "$NGINX"
 HOST=$(hostname)
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+[ -n "$IP" ] || IP=$(ip -4 route get 1 2>/dev/null | sed -n 's/.*src \([0-9.]*\).*/\1/p' | head -1)
+[ -n "$IP" ] || IP=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)
 echo
 echo "Open: http://${HOST}.local:8088"
-[ -n "$IP" ] && echo "Fallback: http://${IP}:8088"
+[ -n "$IP" ] && echo "Fallback: http://${IP}:8088   (IP ${IP}, port 8088)"
