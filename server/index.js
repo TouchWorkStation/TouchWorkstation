@@ -676,6 +676,72 @@ app.get('/api/access',auth,(req,res)=>{
   try{const ts=sync('tailscale ip -4 2>/dev/null',SPAWN_ENV);if(ts)urls.push(`http://${ts.trim()}:${port}`);}catch{}
   res.json({hostname,lanIp,port,urls:[...new Set(urls)]});
 });
+
+// ---- machines registry + discovery (the multi-machine switcher) -----------
+// A saved list of the OTHER TouchWorkstation instances the user controls, kept
+// on this (primary) instance. The stored password is used only to mint a
+// session against the remote when proxying (Part 2) and is never returned to
+// the client. Same JSON-on-disk pattern as loadConfig/saveConfig.
+const MACHINES_FILE=path.join(STATE_DIR,'machines.json');
+function loadMachines(){try{return JSON.parse(fs.readFileSync(MACHINES_FILE,'utf8'))}catch{return[]}}
+function saveMachines(list){fs.mkdirSync(path.dirname(MACHINES_FILE),{recursive:true});fs.writeFileSync(MACHINES_FILE,JSON.stringify(list,null,2))}
+// Never leak the stored password to the client.
+function publicMachine(m){return{id:m.id,name:m.name,baseUrl:m.baseUrl,hasCreds:!!m.password}}
+
+app.get('/api/machines',auth,(req,res)=>{res.json({machines:loadMachines().map(publicMachine)})});
+app.post('/api/machines',auth,(req,res)=>{
+  const b=req.body||{};
+  const name=String(b.name||'').trim();
+  let baseUrl=String(b.baseUrl||'').trim().replace(/\/+$/,'');
+  if(!baseUrl)return res.status(400).json({error:'A machine address (URL) is required.'});
+  if(!/^https?:\/\//i.test(baseUrl))baseUrl='http://'+baseUrl;
+  const list=loadMachines();
+  const m={id:'m-'+Date.now().toString(36),name:name||baseUrl.replace(/^https?:\/\//,''),baseUrl,password:b.password?String(b.password):''};
+  list.push(m);saveMachines(list);
+  res.json({machine:publicMachine(m)});
+});
+app.put('/api/machines/:id',auth,(req,res)=>{
+  const list=loadMachines();const i=list.findIndex(m=>m.id===req.params.id);
+  if(i===-1)return res.status(404).json({error:'Machine not found'});
+  const b=req.body||{};
+  if('name'in b)list[i].name=String(b.name||'').trim()||list[i].name;
+  if('baseUrl'in b&&b.baseUrl){let u=String(b.baseUrl).trim().replace(/\/+$/,'');if(!/^https?:\/\//i.test(u))u='http://'+u;list[i].baseUrl=u}
+  if('password'in b&&b.password)list[i].password=String(b.password);
+  saveMachines(list);res.json({machine:publicMachine(list[i])});
+});
+app.delete('/api/machines/:id',auth,(req,res)=>{
+  const list=loadMachines();const next=list.filter(m=>m.id!==req.params.id);
+  if(next.length===list.length)return res.status(404).json({error:'Machine not found'});
+  saveMachines(next);res.json({ok:true});
+});
+// Auto-detect other instances on the LAN via the mDNS service each install
+// advertises (/etc/avahi/services/touchworkstation.service). Excludes self and
+// anything already registered. Degrades to an empty list if avahi-browse isn't
+// present (the wizard then shows manual-add only).
+app.get('/api/machines/discover',auth,(req,res)=>{
+  const self=os.hostname().toLowerCase();
+  const known=new Set(loadMachines().map(m=>m.baseUrl));
+  let found=[];
+  try{
+    // -r resolve, -p parseable, -t terminate after one pass. Parseable rows:
+    // =;iface;proto;name;type;domain;host;address;port;txt
+    const out=sync('avahi-browse -rptl _touchworkstation._tcp 2>/dev/null',SPAWN_ENV)||'';
+    const seen=new Set();
+    for(const line of out.split('\n')){
+      if(!line.startsWith('='))continue;
+      const f=line.split(';');
+      const host=(f[6]||'').replace(/\.$/,'');const address=f[7]||'';const port=f[8]||'8088';
+      if(!host)continue;
+      const hn=host.replace(/\.local$/,'');
+      if(hn.toLowerCase()===self)continue; // don't list ourselves
+      const baseUrl=`http://${host}:${port}`;
+      if(known.has(baseUrl))continue;
+      const key=host+':'+port;if(seen.has(key))continue;seen.add(key);
+      found.push({hostname:hn,host,address,port:Number(port)||8088,baseUrl});
+    }
+  }catch{ /* no avahi-browse -> empty */ }
+  res.json({machines:found});
+});
 app.get('/api/vpn/status',auth,(req,res)=>{
   const connectionType=classifyConnection(req);
   const installed=!!sync('command -v tailscale',SPAWN_ENV);

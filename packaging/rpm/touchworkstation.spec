@@ -64,12 +64,17 @@ mkdir -p %{buildroot}/usr/bin
 cp -a usr/bin/. %{buildroot}/usr/bin/
 chmod 755 %{buildroot}/usr/bin/touchworkstation*
 
+# mDNS advertisement for auto-discovery (multi-machine switcher).
+mkdir -p %{buildroot}/etc/avahi/services
+cp -a etc/avahi/services/touchworkstation.service %{buildroot}/etc/avahi/services/touchworkstation.service
+
 %files
 /opt/touchworkstation/app
 /opt/touchworkstation/runtime
 /usr/lib/systemd/system/touchworkstation.service
 /usr/local/bin/xdg-open
 /usr/bin/touchworkstation*
+/etc/avahi/services/touchworkstation.service
 
 %post
 set -e
