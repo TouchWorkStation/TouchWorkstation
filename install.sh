@@ -133,8 +133,31 @@ main() {
 
   log ""
   log "============================================================"
-  log " TouchWorkstation installed. Check the terminal output above"
-  log " for the address to open and your first-login password."
+  log " TouchWorkstation installed."
+  log ""
+  # Show the real address + service state by calling the management CLI the
+  # package just installed — single source of truth, and it's correct on both
+  # fresh installs and upgrades (the package's post_install only runs on a
+  # fresh install, so an upgrade would otherwise show nothing useful here).
+  if command -v touchworkstation >/dev/null 2>&1; then
+    touchworkstation status 2>/dev/null || true
+    log ""
+    log " Manage it from any terminal:"
+    log "   touchworkstation status     service state + how to reach it"
+    log "   touchworkstation url        just the address (IP / port)"
+    log "   touchworkstation restart    restart the app (sudo)"
+    log "   touchworkstation logs       recent logs"
+    log "   touchworkstation update     pull + reinstall the latest"
+    log "   touchworkstation help       all commands"
+    log ""
+    log " First login password: touchwork  (you'll change it on first login)"
+  else
+    # Fallback for non-packaged installs where the CLI isn't present.
+    HOST="$(hostname 2>/dev/null)"; IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    [ -n "$HOST" ] && log " Open: http://${HOST}.local:8088"
+    [ -n "$IP" ] && log " Or:   http://${IP}:8088"
+    log " First login password: touchwork  (you'll change it on first login)"
+  fi
   log "============================================================"
 }
 
