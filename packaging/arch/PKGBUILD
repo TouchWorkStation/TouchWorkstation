@@ -85,6 +85,10 @@ package() {
     "$pkgdir/usr/lib/systemd/system/touchworkstation.service"
   install -Dm644 "$srcdir/touchworkstation-nginx.conf" \
     "$pkgdir/etc/nginx/conf.d/touchworkstation.conf"
+  # mDNS advertisement so other instances can auto-discover this one (the
+  # multi-machine switcher). From the cloned tree; avahi picks it up on its own.
+  install -Dm644 "packaging/touchworkstation-avahi.service" \
+    "$pkgdir/etc/avahi/services/touchworkstation.service"
 
   for bin in touchworkstation touchworkstation-status touchworkstation-credentials touchworkstation-password touchworkstation-restart; do
     install -Dm755 "$srcdir/$bin" "$pkgdir/usr/bin/$bin"

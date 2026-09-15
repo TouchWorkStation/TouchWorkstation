@@ -53,6 +53,9 @@ jobs:
           curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
             | tar -xJ --strip-components=1 -C "$DEB_ROOT/opt/touchworkstation/runtime"
           cp packaging/debian/touchworkstation.service "$DEB_ROOT/lib/systemd/system/"
+          # mDNS advertisement for auto-discovery (multi-machine switcher).
+          mkdir -p "$DEB_ROOT/etc/avahi/services"
+          cp packaging/touchworkstation-avahi.service "$DEB_ROOT/etc/avahi/services/touchworkstation.service"
           for f in packaging/bin/*; do
             [ "$(basename "$f")" = "xdg-open" ] && continue
             cp "$f" "$DEB_ROOT/usr/bin/"
@@ -74,9 +77,10 @@ jobs:
           RPMBUILD_DIR="$RUNNER_TEMP/rpmbuild"
           mkdir -p "$RPMBUILD_DIR"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
           RPM_PAYLOAD="$RUNNER_TEMP/rpm-payload/touchworkstation-$RPM_VERSION"
-          mkdir -p "$RPM_PAYLOAD/opt/touchworkstation" "$RPM_PAYLOAD/usr/bin" "$RPM_PAYLOAD/usr/local/bin"
+          mkdir -p "$RPM_PAYLOAD/opt/touchworkstation" "$RPM_PAYLOAD/usr/bin" "$RPM_PAYLOAD/usr/local/bin" "$RPM_PAYLOAD/etc/avahi/services"
           cp -a "$RUNNER_TEMP/deb-root/opt/touchworkstation/app" "$RPM_PAYLOAD/opt/touchworkstation/"
           cp -a "$RUNNER_TEMP/deb-root/opt/touchworkstation/runtime" "$RPM_PAYLOAD/opt/touchworkstation/"
+          cp packaging/touchworkstation-avahi.service "$RPM_PAYLOAD/etc/avahi/services/touchworkstation.service"
           for f in packaging/bin/*; do
             [ "$(basename "$f")" = "xdg-open" ] && continue
             cp "$f" "$RPM_PAYLOAD/usr/bin/"

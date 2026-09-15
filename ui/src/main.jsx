@@ -192,6 +192,7 @@ function Shell({me,settings,setSettings,omarchy}){
  // A short "transition" flag drives a CSS fade on view change, so navigation
  // feels intentional instead of a hard swap. Purely visual; no data impact.
  const[transitioning,setTransitioning]=useState(false);
+ const[showMachines,setShowMachines]=useState(false);
  const go=(v,state=null)=>{
    setProject(null);
    setTransitioning(true);
@@ -210,9 +211,10 @@ function Shell({me,settings,setSettings,omarchy}){
  // under a topbar the way every other distro's build still does.
  const bare=omarchy&&(view==='home'||view==='terminal')&&!project;
  return <div className={'shell '+(mobile?'is-mobile':'is-desktop')}>
- {!mobile&&!bare&&<aside className="sidebar"><Brand/><nav>{NAV.map(([id,Icon,label])=><button key={id} className={view===id&&!project?'active':''} onClick={()=>go(id)}><Icon/><span>{label}</span></button>)}</nav><div className="sidebar-bottom"><div className="machine-chip"><Dot/><div><strong>{me.hostname}</strong><small>Connected</small></div></div><span className="version">{me.version}</span></div></aside>}
- <main className={'main'+(bare?' main-bare':'')}>{!bare&&<Topbar me={me} mobile={mobile} view={view} project={project} onMenu={()=>setMobileMenu(!mobileMenu)} go={go}/>}<div className={'view'+(transitioning?' view-transition':'')+(bare?' view-bare':'')}><Router view={view} go={go} openProject={openProject} openWebview={openWebview} openAgent={openAgent} navState={navState} me={me} project={project} setProject={setProject} settings={settings} setSettings={setSettings} omarchy={omarchy}/></div></main>
- {mobile&&!bare&&!omarchy&&<MobileDock view={view} project={project} go={go}/>} {mobile&&mobileMenu&&<MobileSheet items={omarchy?minimalNavItems:NAV} go={go} onClose={()=>setMobileMenu(false)}/>}</div>
+ {!mobile&&!bare&&<aside className="sidebar"><Brand/><nav>{NAV.map(([id,Icon,label])=><button key={id} className={view===id&&!project?'active':''} onClick={()=>go(id)}><Icon/><span>{label}</span></button>)}</nav><div className="sidebar-bottom"><button className="machine-chip" onClick={()=>setShowMachines(true)} title="Switch machine"><Dot/><div><strong>{me.hostname}</strong><small>Switch machine</small></div><ChevronDown/></button><span className="version">{me.version}</span></div></aside>}
+ <main className={'main'+(bare?' main-bare':'')}>{!bare&&<Topbar me={me} mobile={mobile} view={view} project={project} onMenu={()=>setMobileMenu(!mobileMenu)} go={go} onMachines={()=>setShowMachines(true)}/>}<div className={'view'+(transitioning?' view-transition':'')+(bare?' view-bare':'')}><Router view={view} go={go} openProject={openProject} openWebview={openWebview} openAgent={openAgent} navState={navState} me={me} project={project} setProject={setProject} settings={settings} setSettings={setSettings} omarchy={omarchy}/></div></main>
+ {mobile&&!bare&&!omarchy&&<MobileDock view={view} project={project} go={go}/>} {mobile&&mobileMenu&&<MobileSheet items={omarchy?minimalNavItems:NAV} go={go} onClose={()=>setMobileMenu(false)} onMachines={()=>{setMobileMenu(false);setShowMachines(true)}}/>}
+ {showMachines&&<MachineSwitcher me={me} onClose={()=>setShowMachines(false)}/>}</div>
 }
 // Omarchy's own destinations ({id,icon,label} objects) normalized to the
 // same [id,Icon,label] tuple shape the standard shell's NAV already uses,
@@ -222,15 +224,53 @@ function Shell({me,settings,setSettings,omarchy}){
 // pointing at the screen you're already on would be nonsense. In the sheet —
 // opened from anywhere — it's the way back, so every variant's nav has one.
 const minimalNavItems=[['home',House,'Home'],...MINIMAL_NAV.map(n=>[n.id,n.icon,n.label])];
-function Topbar({me,mobile,view,project,onMenu,go}){
+function Topbar({me,mobile,view,project,onMenu,go,onMachines}){
  const label=project?project.name:(NAV.find(n=>n[0]===view)?.[2]||'Home');
- return <header className="topbar">{mobile?<button className="icon-btn" onClick={onMenu}><Menu/></button>:<div className="crumb">TouchWorkstation <ChevronRight/> <span>{label}</span></div>}<div className="top-status"><span><Dot/> Connected</span>{!mobile&&<Pill>{me.version}</Pill>}<button className="icon-btn" onClick={()=>go('settings')}><Settings/></button></div></header>}
+ return <header className="topbar">{mobile?<button className="icon-btn" onClick={onMenu}><Menu/></button>:<div className="crumb">TouchWorkstation <ChevronRight/> <span>{label}</span></div>}<div className="top-status"><button className="top-machine" onClick={onMachines} title="Switch machine"><Dot/> <span>{me.hostname}</span><ChevronDown/></button>{!mobile&&<Pill>{me.version}</Pill>}<button className="icon-btn" onClick={()=>go('settings')}><Settings/></button></div></header>}
 function MobileDock({view,project,go}){const items=[['home',Home,'Home'],['apps',Grid3X3,'Apps'],['projects',Code2,'Projects'],['agents',Bot,'Agents'],['terminal',TerminalSquare,'Terminal']];return <nav className="mobile-dock">{items.map(([id,Icon,label])=><button className={view===id&&!project?'active':''} key={id} onClick={()=>go(id)}><Icon/><span>{label}</span></button>)}</nav>}
 // Bottom-bar-free on Omarchy (see Shell above) — this sheet, opened from
 // the top-left hamburger, is the only mobile nav surface there, so it's
 // handed the Omarchy-specific destination list instead of the standard
 // shell's NAV in that case.
-function MobileSheet({items=NAV,go,onClose}){return <><div className="mobile-sheet-backdrop" onClick={onClose}/><div className="mobile-sheet"><div className="sheet-handle"/>{items.map(([id,Icon,label])=><button key={id} onClick={()=>go(id)}><Icon/><span>{label}</span><ChevronRight/></button>)}</div></>}
+function MobileSheet({items=NAV,go,onClose,onMachines}){return <><div className="mobile-sheet-backdrop" onClick={onClose}/><div className="mobile-sheet"><div className="sheet-handle"/>{onMachines&&<button onClick={onMachines}><Monitor/><span>Switch machine</span><ChevronRight/></button>}{items.map(([id,Icon,label])=><button key={id} onClick={()=>go(id)}><Icon/><span>{label}</span><ChevronRight/></button>)}</div></>}
+
+// The multi-machine switcher: your saved TouchWorkstation machines, the ones
+// auto-detected on the network (mDNS), and a manual add for VMs / Tailscale that
+// mDNS won't surface. Selecting a machine opens it (Part 1); a later phase makes
+// the app proxy it so you never leave. The list lives on THIS instance.
+function MachineSwitcher({me,onClose}){
+ const[machines,setMachines]=useState(null);
+ const[found,setFound]=useState(null);
+ const[err,setErr]=useState('');
+ const[adding,setAdding]=useState(false);
+ const[form,setForm]=useState({name:'',baseUrl:'',password:''});
+ const[test,setTest]=useState('');
+ function load(){api('/machines').then(r=>setMachines(r.machines||[])).catch(e=>setErr(e.message))}
+ useEffect(()=>{load();api('/machines/discover').then(r=>setFound(r.machines||[])).catch(()=>setFound([]))},[]);
+ function open(baseUrl){window.location.href=baseUrl}
+ async function addDetected(d){const name=window.prompt('Name this machine:',d.hostname);if(name===null)return;const pw=window.prompt(`Login password for ${name} (leave blank to be asked on open):`,'')||'';try{await api('/machines',{method:'POST',body:JSON.stringify({name,baseUrl:d.baseUrl,password:pw})});load();setFound(f=>f.filter(x=>x.baseUrl!==d.baseUrl))}catch(e){setErr(e.message)}}
+ async function addManual(){if(!form.baseUrl.trim())return;try{await api('/machines',{method:'POST',body:JSON.stringify(form)});setForm({name:'',baseUrl:'',password:''});setAdding(false);setTest('');load()}catch(e){setErr(e.message)}}
+ async function rename(m){const name=window.prompt('Rename machine:',m.name);if(!name)return;try{await api(`/machines/${m.id}`,{method:'PUT',body:JSON.stringify({name})});load()}catch(e){setErr(e.message)}}
+ async function remove(m){if(!window.confirm(`Remove ${m.name}?`))return;try{await api(`/machines/${m.id}`,{method:'DELETE'});load()}catch(e){setErr(e.message)}}
+ async function testUrl(){setTest('Testing…');let u=form.baseUrl.trim();if(!/^https?:\/\//i.test(u))u='http://'+u;try{const r=await fetch(u.replace(/\/+$/,'')+'/api/me',{});setTest(r.status===401||r.ok?'Reachable — a TouchWorkstation is there.':`Reached it (HTTP ${r.status}).`)}catch{setTest('Could not reach it. On a VM behind NAT, use its Tailscale address instead.')}}
+ return <><div className="mobile-sheet-backdrop" onClick={onClose}/><div className="machine-sheet">
+  <div className="ms-head"><strong>Machines</strong><button className="ms-x" onClick={onClose} aria-label="Close"><X/></button></div>
+  {err&&<div className="inline-error">{err}</div>}
+  <div className="ms-current"><Dot/><div><strong>{me.hostname}</strong><small>This machine</small></div></div>
+  {machines&&machines.length>0&&<><p className="ms-label">Your machines</p>{machines.map(m=><div key={m.id} className="ms-row"><Monitor/><button className="ms-open" onClick={()=>open(m.baseUrl)}><strong>{m.name}</strong><small>{m.baseUrl}</small></button><button className="ms-mini" onClick={()=>rename(m)} title="Rename">Rename</button><button className="ms-mini" onClick={()=>remove(m)} title="Remove"><X/></button></div>)}</>}
+  <p className="ms-label">Detected on your network</p>
+  {found===null&&<div className="ms-empty">Scanning…</div>}
+  {found&&found.length===0&&<div className="ms-empty">None found. Add one manually below, or check it's on the same network.</div>}
+  {found&&found.map(d=><div key={d.baseUrl} className="ms-row"><Monitor/><div className="ms-open"><strong>{d.hostname}</strong><small>{d.address||d.host}:{d.port}</small></div><button className="ms-mini primary" onClick={()=>addDetected(d)}>Add</button></div>)}
+  {adding?<div className="ms-add">
+   <input placeholder="Name (e.g. VM, Server)" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/>
+   <input placeholder="Address, e.g. 100.x.x.x:8088 or host.local:8088" value={form.baseUrl} onChange={e=>setForm(f=>({...f,baseUrl:e.target.value}))} autoCapitalize="none" autoCorrect="off"/>
+   <input placeholder="Login password (optional)" type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))}/>
+   {test&&<small className="ms-test">{test}</small>}
+   <div className="ms-add-actions"><Button onClick={testUrl}>Test</Button><Button className="primary" onClick={addManual} disabled={!form.baseUrl.trim()}>Add</Button><Button onClick={()=>{setAdding(false);setTest('')}}>Cancel</Button></div>
+  </div>:<button className="ms-addbtn" onClick={()=>setAdding(true)}><Plus/> Add manually (VM / Tailscale)</button>}
+ </div></>;
+}
 
 function Router(p){
  if(p.project)return <DeveloperWorkspace project={p.project} go={p.go} back={()=>p.go('projects')}/>;

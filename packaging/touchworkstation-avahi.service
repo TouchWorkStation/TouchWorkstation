@@ -1,0 +1,15 @@
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<!--
+  Advertises this TouchWorkstation instance on the local network so other
+  instances can auto-discover it (the multi-machine switcher browses for
+  _touchworkstation._tcp). Avahi picks this file up automatically; no daemon
+  config beyond dropping it in /etc/avahi/services/. %h expands to the hostname.
+-->
+<service-group>
+  <name replace-wildcards="yes">TouchWorkstation on %h</name>
+  <service>
+    <type>_touchworkstation._tcp</type>
+    <port>8088</port>
+  </service>
+</service-group>
