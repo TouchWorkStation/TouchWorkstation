@@ -38,16 +38,27 @@ ENV
   sed -i "s/^User=TW_USER_PLACEHOLDER/User=$APP_USER/; s/^Group=TW_GROUP_PLACEHOLDER/Group=$APP_GROUP/" \
     /usr/lib/systemd/system/touchworkstation.service
 
+  # Actually bring the services up instead of printing a command the user has
+  # to remember — nginx (the :8088 proxy) staying down was reported as "the
+  # app isn't reachable on its port". nginx is a hard dependency so it's
+  # present; enable+start both, and validate the config before (re)loading it.
+  systemctl daemon-reload 2>/dev/null || true
+  systemctl enable --now touchworkstation 2>/dev/null || true
+  systemctl enable nginx 2>/dev/null || true
+  if nginx -t 2>/dev/null; then systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true
+  else systemctl start nginx 2>/dev/null || true; fi
+
   echo
   echo "============================================================"
-  echo " TouchWorkstation installed. Two steps left:"
+  echo " TouchWorkstation installed and started."
   echo
-  echo "   sudo systemctl enable --now touchworkstation nginx"
-  echo
-  echo " Then open: http://$(hostname).local:8088"
+  echo " Open: http://$(hostname).local:8088"
+  IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+  [ -n "$IP" ] && echo " Or:   http://${IP}:8088"
   if [ "$APP_USER" != root ]; then
     echo " Beta password: touchwork (you'll be asked to change it on first login)"
   fi
+  echo " Manage it with:  touchworkstation status | restart | url"
   echo "============================================================"
 }
 
@@ -83,10 +94,17 @@ post_upgrade() {
   # process was never actually replaced. The .deb installer already guards
   # against this; the Arch package never did.
   fuser -k 8787/tcp 2>/dev/null || true
+  systemctl enable touchworkstation 2>/dev/null || true
   if ! systemctl restart touchworkstation; then
     echo "WARNING: TouchWorkstation did not restart automatically — run: sudo systemctl restart touchworkstation" >&2
   fi
-  echo "==> Updated and restarted."
+  # Make sure the :8088 proxy is up too — earlier packages never enabled or
+  # started nginx on upgrade, so it could sit inactive (reported: nginx
+  # inactive, app not reachable on 8088). Enable it and reload the config.
+  systemctl enable nginx 2>/dev/null || true
+  if nginx -t 2>/dev/null; then systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true
+  else systemctl start nginx 2>/dev/null || true; fi
+  echo "==> Updated and restarted (app + nginx)."
 }
 
 pre_remove() {
