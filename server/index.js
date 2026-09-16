@@ -259,7 +259,44 @@ function netRates(){
     return {rxBps:rxRate,txBps:txRate};
   }catch{return {rxBps:0,txBps:0}}
 }
-app.get('/api/status',auth,async(req,res)=>{
+// GPU/VRAM detection for the cluster view. Try nvidia-smi first, then AMD's
+// rocm-smi; return [] when neither is present (integrated/headless boxes) so
+// the dashboard just shows "no GPU" rather than erroring. Memory is reported
+// in MB by both tools; we keep MB and let the UI format.
+function detectGpus(){
+  // nvidia-smi: one CSV row per GPU — name, total MB, used MB, util %.
+  try{
+    const out=sync('nvidia-smi --query-gpu=name,memory.total,memory.used,utilization.gpu --format=csv,noheader,nounits 2>/dev/null',SPAWN_ENV);
+    if(out){
+      const gpus=out.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
+        const [name,total,used,util]=l.split(',').map(x=>(x||'').trim());
+        return {name:name||'GPU',vramTotalMB:Number(total)||0,vramUsedMB:Number(used)||0,util:Number(util)||0,vendor:'nvidia'};
+      });
+      if(gpus.length)return gpus;
+    }
+  }catch{}
+  // rocm-smi (AMD): parse the JSON form for VRAM total/used and GPU use %.
+  try{
+    const raw=sync('rocm-smi --showproductname --showmeminfo vram --showuse --json 2>/dev/null',SPAWN_ENV);
+    if(raw){
+      const j=JSON.parse(raw);
+      const gpus=[];
+      for(const [k,v] of Object.entries(j)){
+        if(!/^card\d+$/i.test(k))continue;
+        const totalB=Number(v['VRAM Total Memory (B)']||v['vram total memory (b)']||0);
+        const usedB=Number(v['VRAM Total Used Memory (B)']||v['vram total used memory (b)']||0);
+        const util=Number((v['GPU use (%)']||v['gpu use (%)']||'0').toString().replace(/[^\d.]/g,''))||0;
+        const name=(v['Card series']||v['Card model']||v['Card SKU']||'AMD GPU').toString();
+        gpus.push({name,vramTotalMB:Math.round(totalB/1048576),vramUsedMB:Math.round(usedB/1048576),util,vendor:'amd'});
+      }
+      if(gpus.length)return gpus;
+    }
+  }catch{}
+  return [];
+}
+// Shared by /api/status and the cluster aggregator so both report the exact
+// same per-machine spec shape.
+async function computeStatus(){
   let disk=0,diskUsedGB=0,diskTotalGB=0;
   try{
     // df -P gives POSIX-stable column order: size, used, avail, %used, mount.
@@ -278,16 +315,19 @@ app.get('/api/status',auth,async(req,res)=>{
   const cpus=os.cpus();
   const ip=Object.values(os.networkInterfaces()).flat().find(x=>x&&x.family==='IPv4'&&!x.internal)?.address;
   const net=netRates();
-  res.json({
+  const gpus=detectGpus();
+  return {
     cpu,memory,disk,ip,uptime:os.uptime(),net,
     specs:{
       cpuCores:cpus.length,
       cpuModel:(cpus[0]?.model||'').replace(/\s+/g,' ').trim(),
       memUsedGB,memTotalGB,
       diskUsedGB,diskTotalGB,
+      gpus,
     },
-  });
-});
+  };
+}
+app.get('/api/status',auth,async(req,res)=>{res.json(await computeStatus())});
 
 function safeHome(p=''){const resolved=path.resolve(p||HOME);if(!resolved.startsWith(path.resolve(HOME)))throw new Error('Path outside home directory is blocked');return resolved}
 app.get('/api/files',auth,(req,res)=>{try{const p=safeHome(req.query.path||HOME);const entries=fs.readdirSync(p,{withFileTypes:true}).filter(x=>!x.name.startsWith('.')).map(x=>({name:x.name,directory:x.isDirectory(),path:path.join(p,x.name)})).sort((a,b)=>Number(b.directory)-Number(a.directory)||a.name.localeCompare(b.name));const parent=p===HOME?null:path.dirname(p);res.json({path:p,parent,entries})}catch(e){res.status(400).json({error:e.message})}});
@@ -714,6 +754,44 @@ app.delete('/api/machines/:id',auth,(req,res)=>{
   const list=loadMachines();const next=list.filter(m=>m.id!==req.params.id);
   if(next.length===list.length)return res.status(404).json({error:'Machine not found'});
   saveMachines(next);res.json({ok:true});
+});
+// --- Cluster view: aggregate live hardware stats across the fleet ----------
+// The primary logs into each registered machine once (with its stored password),
+// caches the session cookie, then polls that machine's /api/status. This is a
+// narrow read-only fetch, not the full reverse proxy — enough to render a
+// side-by-side dashboard of every node's CPU / RAM / VRAM / disk / network.
+const machineSessions=new Map(); // machine id -> tw_session cookie string
+async function machineCookie(m,force){
+  if(!force&&machineSessions.has(m.id))return machineSessions.get(m.id);
+  if(!m.password)return null;
+  const r=await fetch(m.baseUrl.replace(/\/+$/,'')+'/api/login',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({password:m.password}),signal:AbortSignal.timeout(5000),
+  });
+  const setc=r.headers.get('set-cookie');
+  const cookie=setc?setc.split(';')[0]:null;
+  if(cookie)machineSessions.set(m.id,cookie); else machineSessions.delete(m.id);
+  return cookie;
+}
+async function fetchMachineStatus(m){
+  const base=m.baseUrl.replace(/\/+$/,'');
+  try{
+    let cookie=await machineCookie(m);
+    const get=()=>fetch(base+'/api/status',{headers:cookie?{cookie}:{},signal:AbortSignal.timeout(5000)});
+    let r=await get();
+    if(r.status===401&&m.password){cookie=await machineCookie(m,true);r=await get()} // stale cookie -> re-login once
+    if(r.status===401)return {online:true,needsAuth:true};
+    if(!r.ok)return {online:false,error:'HTTP '+r.status};
+    return {online:true,status:await r.json()};
+  }catch(e){return {online:false,error:e.name==='TimeoutError'?'timed out':(e.message||'unreachable')}}
+}
+app.get('/api/machines/stats',auth,async(req,res)=>{
+  const list=loadMachines();
+  const [self,others]=await Promise.all([
+    computeStatus().then(status=>({id:'self',name:os.hostname(),self:true,online:true,status})).catch(()=>({id:'self',name:os.hostname(),self:true,online:false,error:'local error'})),
+    Promise.all(list.map(async m=>({id:m.id,name:m.name,baseUrl:m.baseUrl,self:false,...(await fetchMachineStatus(m))}))),
+  ]);
+  res.json({machines:[self,...others]});
 });
 // Auto-detect other instances on the LAN via the mDNS service each install
 // advertises (/etc/avahi/services/touchworkstation.service). Excludes self and

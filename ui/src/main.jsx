@@ -198,6 +198,10 @@ function Shell({me,settings,setSettings,omarchy}){
  const[transitioning,setTransitioning]=useState(false);
  const[showMachines,setShowMachines]=useState(false);
  const go=(v,state=null)=>{
+   // Home-when-already-home brings up the popup nav tree instead of being a
+   // no-op. On the bare Omarchy home there's otherwise no way to reach it, and
+   // it makes Home a consistent "open the menu" gesture across every variant.
+   if(v==='home'&&view==='home'&&!project&&mobile){setMobileMenu(m=>!m);return}
    setProject(null);
    setTransitioning(true);
    setView(v);
@@ -216,7 +220,7 @@ function Shell({me,settings,setSettings,omarchy}){
  const bare=omarchy&&(view==='home'||view==='terminal')&&!project;
  return <div className={'shell '+(mobile?'is-mobile':'is-desktop')}>
  {!mobile&&!bare&&<aside className="sidebar"><Brand/><nav>{NAV.map(([id,Icon,label])=><button key={id} className={view===id&&!project?'active':''} onClick={()=>go(id)}><Icon/><span>{label}</span></button>)}</nav><div className="sidebar-bottom"><button className="machine-chip" onClick={()=>setShowMachines(true)} title="Switch machine"><Dot/><div><strong>{me.hostname}</strong><small>Switch machine</small></div><ChevronDown/></button><span className="version">{me.version}</span></div></aside>}
- <main className={'main'+(bare?' main-bare':'')}>{!bare&&<Topbar me={me} mobile={mobile} view={view} project={project} onMenu={()=>setMobileMenu(!mobileMenu)} go={go} onMachines={()=>setShowMachines(true)}/>}<div className={'view'+(transitioning?' view-transition':'')+(bare?' view-bare':'')}><Router view={view} go={go} openProject={openProject} openWebview={openWebview} openAgent={openAgent} navState={navState} me={me} project={project} setProject={setProject} settings={settings} setSettings={setSettings} omarchy={omarchy}/></div></main>
+ <main className={'main'+(bare?' main-bare':'')}>{!bare&&<Topbar me={me} mobile={mobile} view={view} project={project} onMenu={()=>setMobileMenu(!mobileMenu)} go={go} onMachines={()=>setShowMachines(true)}/>}<div className={'view'+(transitioning?' view-transition':'')+(bare?' view-bare':'')}><Router view={view} go={go} openProject={openProject} openWebview={openWebview} openAgent={openAgent} navState={navState} me={me} project={project} setProject={setProject} settings={settings} setSettings={setSettings} omarchy={omarchy} onMachines={()=>setShowMachines(true)}/></div></main>
  {mobile&&!bare&&!omarchy&&<MobileDock view={view} project={project} go={go}/>} {mobile&&mobileMenu&&<MobileSheet items={omarchy?minimalNavItems:NAV} go={go} onClose={()=>setMobileMenu(false)} onMachines={()=>{setMobileMenu(false);setShowMachines(true)}}/>}
  {showMachines&&<MachineSwitcher me={me} onClose={()=>setShowMachines(false)}/>}</div>
 }
@@ -257,8 +261,11 @@ function MachineSwitcher({me,onClose}){
  async function rename(m){const name=window.prompt('Rename machine:',m.name);if(!name)return;try{await api(`/machines/${m.id}`,{method:'PUT',body:JSON.stringify({name})});load()}catch(e){setErr(e.message)}}
  async function remove(m){if(!window.confirm(`Remove ${m.name}?`))return;try{await api(`/machines/${m.id}`,{method:'DELETE'});load()}catch(e){setErr(e.message)}}
  async function testUrl(){setTest('Testing…');let u=form.baseUrl.trim();if(!/^https?:\/\//i.test(u))u='http://'+u;try{const r=await fetch(u.replace(/\/+$/,'')+'/api/me',{});setTest(r.status===401||r.ok?'Reachable — a TouchWorkstation is there.':`Reached it (HTTP ${r.status}).`)}catch{setTest('Could not reach it. On a VM behind NAT, use its Tailscale address instead.')}}
+ const[tab,setTab]=useState('list');
  return <><div className="mobile-sheet-backdrop" onClick={onClose}/><div className="machine-sheet">
   <div className="ms-head"><strong>Machines</strong><button className="ms-x" onClick={onClose} aria-label="Close"><X/></button></div>
+  <div className="ms-tabs"><button className={tab==='list'?'active':''} onClick={()=>setTab('list')}>Switch</button><button className={tab==='cluster'?'active':''} onClick={()=>setTab('cluster')}>Cluster</button></div>
+  {tab==='cluster'?<ClusterView/>:<>
   {err&&<div className="inline-error">{err}</div>}
   <div className="ms-current"><Dot/><div><strong>{me.hostname}</strong><small>This machine</small></div></div>
   {machines&&machines.length>0&&<><p className="ms-label">Your machines</p>{machines.map(m=><div key={m.id} className="ms-row"><Monitor/><button className="ms-open" onClick={()=>open(m.baseUrl)}><strong>{m.name}</strong><small>{m.baseUrl}</small></button><button className="ms-mini" onClick={()=>rename(m)} title="Rename">Rename</button><button className="ms-mini" onClick={()=>remove(m)} title="Remove"><X/></button></div>)}</>}
@@ -273,7 +280,57 @@ function MachineSwitcher({me,onClose}){
    {test&&<small className="ms-test">{test}</small>}
    <div className="ms-add-actions"><Button onClick={testUrl}>Test</Button><Button className="primary" onClick={addManual} disabled={!form.baseUrl.trim()}>Add</Button><Button onClick={()=>{setAdding(false);setTest('')}}>Cancel</Button></div>
   </div>:<button className="ms-addbtn" onClick={()=>setAdding(true)}><Plus/> Add manually (VM / Tailscale)</button>}
+  </>}
  </div></>;
+}
+
+// Cluster view — a live dashboard of every node's hardware, polled through the
+// primary (GET /api/machines/stats logs into each registered machine and reads
+// its /api/status). Shows a fleet total across all reachable nodes plus a card
+// per machine: CPU, RAM, GPU/VRAM, disk and network. This machine is always
+// first and always online; remote nodes show why they're unreachable if they
+// are (no password stored, timed out, wrong address).
+function fmtRate(bps){if(!bps||bps<1024)return `${(bps||0).toFixed(0)} B/s`;const mb=bps/1048576;return mb>=1?`${mb.toFixed(1)} MB/s`:`${(bps/1024).toFixed(0)} KB/s`;}
+function gpuTotals(specs){const g=specs?.gpus||[];return{total:g.reduce((a,x)=>a+(x.vramTotalMB||0),0),used:g.reduce((a,x)=>a+(x.vramUsedMB||0),0),count:g.length};}
+function ClusterView(){
+ const[data]=usePoll(()=>api('/machines/stats'),4000,[]);
+ const machines=data?.machines||[];
+ const online=machines.filter(m=>m.online&&m.status);
+ const totals=online.reduce((a,m)=>{const s=m.status.specs||{};const gt=gpuTotals(s);a.cores+=s.cpuCores||0;a.memUsed+=s.memUsedGB||0;a.memTotal+=s.memTotalGB||0;a.diskUsed+=s.diskUsedGB||0;a.diskTotal+=s.diskTotalGB||0;a.vramUsed+=gt.used;a.vramTotal+=gt.total;a.rx+=m.status.net?.rxBps||0;a.tx+=m.status.net?.txBps||0;return a;},{cores:0,memUsed:0,memTotal:0,diskUsed:0,diskTotal:0,vramUsed:0,vramTotal:0,rx:0,tx:0});
+ const gb=n=>Math.round(n*10)/10;
+ return <div className="cluster">
+  {!data&&<div className="ms-empty">Gathering fleet stats…</div>}
+  {data&&<>
+   <div className="cluster-total">
+    <div className="cluster-total-head"><Server/> <strong>Fleet total</strong><span>{online.length} / {machines.length} online</span></div>
+    <div className="cluster-total-grid">
+     <div className="cl-stat"><Cpu/><strong>{totals.cores}</strong><small>CPU cores</small></div>
+     <div className="cl-stat"><MemoryStick/><strong>{gb(totals.memTotal)} GB</strong><small>RAM · {gb(totals.memUsed)} used</small></div>
+     <div className="cl-stat"><Zap/><strong>{totals.vramTotal?`${gb(totals.vramTotal/1024)} GB`:'—'}</strong><small>VRAM{totals.vramTotal?` · ${gb(totals.vramUsed/1024)} used`:''}</small></div>
+     <div className="cl-stat"><HardDrive/><strong>{gb(totals.diskTotal)} GB</strong><small>Disk · {gb(totals.diskUsed)} used</small></div>
+     <div className="cl-stat"><Wifi/><strong>{fmtRate(totals.rx+totals.tx)}</strong><small>Network total</small></div>
+    </div>
+   </div>
+   {machines.map(m=><MachineCard key={m.id} m={m}/>)}
+  </>}
+ </div>;
+}
+function MachineCard({m}){
+ const s=m.status?.specs||{};const gt=gpuTotals(s);const gb=n=>Math.round(n*10)/10;
+ return <div className={'cluster-card'+(m.online&&m.status?'':' off')}>
+  <div className="cluster-card-head"><Monitor/><strong>{m.name}</strong>{m.self&&<span className="cl-tag">this machine</span>}<span className={'cl-dot'+(m.online&&m.status?' on':'')}/></div>
+  {m.online&&m.status?<>
+   {s.cpuModel&&<div className="cluster-cpu-model">{s.cpuModel}</div>}
+   {(s.gpus||[]).map((g,i)=><div key={i} className="cluster-gpu">{g.name} · {gb(g.vramTotalMB/1024)} GB VRAM</div>)}
+   <div className="cluster-card-grid">
+    <div className="cl-stat"><Cpu/><strong>{m.status.cpu}%</strong><small>{s.cpuCores} cores</small></div>
+    <div className="cl-stat"><MemoryStick/><strong>{m.status.memory}%</strong><small>{gb(s.memUsedGB)}/{gb(s.memTotalGB)} GB</small></div>
+    <div className="cl-stat"><Zap/><strong>{gt.count?`${Math.round(gt.total?gt.used/gt.total*100:0)}%`:'—'}</strong><small>{gt.count?`${gb(gt.used/1024)}/${gb(gt.total/1024)} GB`:'no GPU'}</small></div>
+    <div className="cl-stat"><HardDrive/><strong>{m.status.disk}%</strong><small>{gb(s.diskUsedGB)}/{gb(s.diskTotalGB)} GB</small></div>
+    <div className="cl-stat cl-net"><Wifi/><small><Download/> {fmtRate(m.status.net?.rxBps)}</small><small><Upload/> {fmtRate(m.status.net?.txBps)}</small></div>
+   </div>
+  </>:<div className="cluster-off">{m.needsAuth?'Add its login password to show stats':(m.error||'Unreachable')}</div>}
+ </div>;
 }
 
 function Router(p){
@@ -290,7 +347,7 @@ function Router(p){
    case'shortcuts':return <ShortcutTrainer/>;
    case'files':return <Files/>;
    case'terminal':return <TerminalScreen go={p.go} omarchy={p.omarchy} initialSessionId={p.navState?.sessionId} cwd={p.navState?.cwd} pendingCommand={p.navState?.pendingCommand}/>;
-   case'settings':return <SettingsView settings={p.settings} setSettings={p.setSettings} go={p.go}/>;
+   case'settings':return <SettingsView settings={p.settings} setSettings={p.setSettings} go={p.go} onMachines={p.onMachines}/>;
    default:return p.omarchy ? (omarchyLayoutOf(p.settings)==='tiled' ? <TiledDashboard go={p.go} settings={p.settings}/> : <MinimalDashboard go={p.go}/>) : <Dashboard me={p.me} go={p.go} openProject={p.openProject} settings={p.settings}/>;
  }
 }
@@ -864,7 +921,7 @@ function AiSignIn({go}){
   {!runtimes&&<div className="empty-state">Loading…</div>}
  </div>;
 }
-function SettingsView({settings,setSettings,go}){const[vpn,setVpn]=useState(null),[github,setGithub]=useState(null),[msg,setMsg]=useState(''),[showRA,setShowRA]=useState(false),[showWP,setShowWP]=useState(false),[wpVersion,setWpVersion]=useState(0);const[me]=useLoad(()=>api('/me'),[]);const[status]=usePoll(()=>api('/status'),5000,[]);useEffect(()=>{api('/vpn/status').then(setVpn);api('/github/status').then(setGithub)},[]);
+function SettingsView({settings,setSettings,go,onMachines}){const[vpn,setVpn]=useState(null),[github,setGithub]=useState(null),[msg,setMsg]=useState(''),[showRA,setShowRA]=useState(false),[showWP,setShowWP]=useState(false),[wpVersion,setWpVersion]=useState(0);const[me]=useLoad(()=>api('/me'),[]);const[status]=usePoll(()=>api('/status'),5000,[]);useEffect(()=>{api('/vpn/status').then(setVpn);api('/github/status').then(setGithub)},[]);
  const localUrl=me?.hostname?`http://${me.hostname}.local:8088`:null;
  const ipUrl=status?.ip?`http://${status.ip}:8088`:null;
  return <div className="settings page-pad">{showRA&&<RemoteAccess onClose={()=>{setShowRA(false);api('/vpn/status').then(setVpn)}}/>}{showWP&&<WallpaperPicker onClose={()=>setShowWP(false)} onSaved={()=>setWpVersion(v=>v+1)}/>}<PageTitle kicker="SETTINGS" title="Keep it simple." body="Tell TouchWorkstation what you want to do. Advanced Linux details stay out of the way."/>
@@ -880,6 +937,7 @@ function SettingsView({settings,setSettings,go}){const[vpn,setVpn]=useState(null
  <Setting icon={GitBranch} title="GitHub" status={github?.connected?'Connected':'Not connected'} text={github?.connected?`Connected as ${github.user||'your GitHub account'}.`:'Do you want to clone, pull and push your projects from your phone?'}><Button onClick={async()=>{if(github?.connected){go('projects');return}try{const sessionId=await resolveTerminalTarget('github-login');go('terminal',{pendingCommand:'gh auth login',sessionId})}catch{go('terminal',{pendingCommand:'gh auth login'})}}}>{github?.connected?'Manage':'Connect GitHub'}</Button></Setting>
  <Setting icon={Bot} title="AI sign-in" status="One place" text="Sign in to each AI CLI once, here. It's your computer's own login — every agent and CLI launch reuses it, so you never sign in again per-agent."><AiSignIn go={go}/></Setting>
  <Setting icon={Bot} title="AI Agents" status="Configurable" text="Agents are configured in the Agents screen — choose a runtime, scope it to a project, and set permissions."><Button onClick={()=>go('agents')}>Go to Agents</Button></Setting>
+ <Setting icon={Server} title="Machines & cluster" status="Fleet" text="Add and name your other machines, then see every node's CPU, RAM, GPU/VRAM, disk and network side by side in the cluster view."><Button onClick={()=>onMachines?.()}>Manage machines</Button></Setting>
  <Setting icon={Palette} title="Appearance" status={themeLabel(settings?.theme)} text="Choose how TouchWorkstation feels. Your choice is saved and applied instantly."><div className="theme-picker">{[['aubergine','Aubergine','aub'],['charcoal','Charcoal','char'],['solar','Solar','sol']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.theme||'aubergine')===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,theme:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({theme:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
  <Setting icon={LayoutGrid} title="Interface" status={variantLabel(settings?.uiVariant)} text="Omarchy replaces the home screen and terminal with a full-black, keyboard-driven layout. This overrides whatever the installed build set by default."><div className="theme-picker">{[['standard','Standard','std'],['omarchy','Omarchy','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.uiVariant?settings.uiVariant:(BUILD_OMARCHY?'omarchy':'standard'))===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,uiVariant:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({uiVariant:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
  {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&<Setting icon={LayoutGrid} title="Home Layout" status={omarchyLayoutOf(settings)==='tiled'?'Tiled':'Classic'} text="Tiled shows several live, independently-usable panes at once — terminal, files, an editor, processes, and stats — like a real tiling window manager."><div className="theme-picker">{[['classic','Classic','std'],['tiled','Tiled','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+(omarchyLayoutOf(settings)===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,omarchyLayout:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({omarchyLayout:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>}
