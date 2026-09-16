@@ -1068,3 +1068,33 @@ html.omarchy-build,html.omarchy-build body,html.omarchy-build #root{background:#
 /* Editor filename + gutter tint. */
 .tiled-color .tile-editor .tile-pane-head span:first-of-type{color:#e6d9ff}
 .tiled-color .tile-editor-msg{color:var(--tc-mauve)}
+
+/* ---- Liquid glass, APP-WIDE ------------------------------------------------
+   Extends the glass look beyond the tiled home to every screen. Placed after
+   the .tiled-skin block on purpose so these translucent surfaces override its
+   solid ones (equal specificity → later wins). One wallpaper is painted on a
+   FIXED layer behind everything so it never scrolls; structural containers go
+   transparent to reveal it, and the app's cards/bars become frosted glass. */
+html.tiled-glass body{background:transparent}
+html.tiled-glass body::before{
+  content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    linear-gradient(rgba(0,0,0,.34),rgba(0,0,0,.5)),
+    url(/wallpaper.jpg) center/cover no-repeat,
+    #0a0a12;
+}
+/* Containers see-through so the fixed wallpaper shows and doesn't scroll. */
+.tiled-glass .main,.tiled-glass .view,.tiled-glass .tiled-dash,.tiled-glass .shell{background:transparent}
+/* Frosted surfaces across the whole app (override .tiled-skin's solid ones). */
+.tiled-glass .sidebar,.tiled-glass .topbar,.tiled-glass .mobile-dock,.tiled-glass .mobile-sheet,
+.tiled-glass .machine-sheet,.tiled-glass .card,.tiled-glass .setting-row,.tiled-glass .file-row,
+.tiled-glass .home-tile-row,.tiled-glass .launcher,.tiled-glass .project-card,.tiled-glass .agent-card,
+.tiled-glass .clipboard-card,.tiled-glass .docker-card,.tiled-glass .runtime-chip,.tiled-glass .app-card,
+.tiled-glass .agent-chat-compose input,.tiled-glass .terminal-window{
+  background:rgba(18,18,26,.42);
+  -webkit-backdrop-filter:blur(18px) saturate(1.25);
+  backdrop-filter:blur(18px) saturate(1.25);
+  border-color:rgba(255,255,255,.16);
+}
+/* The tiled home's own dashboard background comes from the fixed layer now. */
+.tiled-glass .tiled-dash{background:transparent}
