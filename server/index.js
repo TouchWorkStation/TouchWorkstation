@@ -145,7 +145,7 @@ function sessionCookie(token,req){
   return `tw_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`+(req.secure?'; Secure':'');
 }
 app.post('/api/login',(req,res)=>{if(!pwEqual(req.body.password,APP_PASSWORD))return res.status(401).json({error:'Invalid password'});const token=jwt.sign({sub:os.userInfo().username},JWT_SECRET,{expiresIn:'30d'});res.setHeader('Set-Cookie',sessionCookie(token,req));res.json({ok:true,mustChangePassword:PW_MUST_CHANGE})});
-app.get('/api/me',auth,(req,res)=>res.json({hostname:os.hostname(),user:os.userInfo().username,version:'1.0.0-beta.47',build:BUILD_SHA,startedAt:PROCESS_STARTED_AT,mustChangePassword:PW_MUST_CHANGE}));
+app.get('/api/me',auth,(req,res)=>res.json({hostname:os.hostname(),user:os.userInfo().username,version:'1.0.0-beta.48',build:BUILD_SHA,startedAt:PROCESS_STARTED_AT,mustChangePassword:PW_MUST_CHANGE}));
 
 // Rewrite APP_PASSWORD= (and clear PW_MUST_CHANGE) in the env file in place,
 // preserving every other line, so systemd/postinst keep reading the same
