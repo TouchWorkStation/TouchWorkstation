@@ -130,7 +130,21 @@ let runners=new Map();
 
 function parseCookies(req){return Object.fromEntries((req.headers.cookie||'').split(';').map(x=>x.trim()).filter(Boolean).map(x=>{const i=x.indexOf('=');return [x.slice(0,i),decodeURIComponent(x.slice(i+1))]}));}
 function auth(req,res,next){try{const t=parseCookies(req).tw_session||req.headers.authorization?.replace('Bearer ','');if(!t)throw 0;req.user=jwt.verify(t,JWT_SECRET);next()}catch{res.status(401).json({error:'Not authenticated'})}}
-app.post('/api/login',(req,res)=>{if(req.body.password!==APP_PASSWORD)return res.status(401).json({error:'Invalid password'});const token=jwt.sign({sub:os.userInfo().username},JWT_SECRET,{expiresIn:'30d'});res.setHeader('Set-Cookie',`tw_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`);res.json({ok:true,mustChangePassword:PW_MUST_CHANGE})});
+// Constant-time password comparison — avoids leaking the password length/prefix
+// through response timing. Hash both sides to a fixed length first so
+// timingSafeEqual never throws on a length mismatch (which would itself leak).
+function pwEqual(a,b){
+  const ha=crypto.createHash('sha256').update(String(a)).digest();
+  const hb=crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(ha,hb);
+}
+// Mark the session cookie Secure only when the request actually arrived over
+// TLS (the optional 8443 listener) — plain-HTTP LAN use must keep working, and
+// a Secure cookie would simply be dropped there.
+function sessionCookie(token,req){
+  return `tw_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`+(req.secure?'; Secure':'');
+}
+app.post('/api/login',(req,res)=>{if(!pwEqual(req.body.password,APP_PASSWORD))return res.status(401).json({error:'Invalid password'});const token=jwt.sign({sub:os.userInfo().username},JWT_SECRET,{expiresIn:'30d'});res.setHeader('Set-Cookie',sessionCookie(token,req));res.json({ok:true,mustChangePassword:PW_MUST_CHANGE})});
 app.get('/api/me',auth,(req,res)=>res.json({hostname:os.hostname(),user:os.userInfo().username,version:'1.0.0-beta.47',build:BUILD_SHA,startedAt:PROCESS_STARTED_AT,mustChangePassword:PW_MUST_CHANGE}));
 
 // Rewrite APP_PASSWORD= (and clear PW_MUST_CHANGE) in the env file in place,
@@ -154,10 +168,10 @@ function persistPassword(newPassword){
 
 app.post('/api/change-password',auth,(req,res)=>{
   const {currentPassword,newPassword}=req.body||{};
-  if(currentPassword!==APP_PASSWORD)return res.status(401).json({error:'Current password is incorrect'});
+  if(!pwEqual(currentPassword,APP_PASSWORD))return res.status(401).json({error:'Current password is incorrect'});
   const np=String(newPassword||'');
   if(np.length<8)return res.status(400).json({error:'New password must be at least 8 characters'});
-  if(np===APP_PASSWORD)return res.status(400).json({error:'Choose a password different from the current one'});
+  if(pwEqual(np,APP_PASSWORD))return res.status(400).json({error:'Choose a password different from the current one'});
   try{persistPassword(np)}catch(e){return res.status(500).json({error:e.message})}
   APP_PASSWORD=np;PW_MUST_CHANGE=false;
   res.json({ok:true});
@@ -553,8 +567,15 @@ app.post('/api/settings',auth,(req,res)=>{
   }
   if('tiledPalette' in body&&(body.tiledPalette==='mono'||body.tiledPalette==='color'))c.tiledPalette=body.tiledPalette;
   if('tiledGlass' in body)c.tiledGlass=!!body.tiledGlass;
+  // Tiled appearance customization (Settings > Themes). Each is validated/clamped
+  // so a bad value can never write junk that the client would then feed into CSS.
+  if('tiledAccent' in body){const v=String(body.tiledAccent||'');if(/^#[0-9a-fA-F]{6}$/.test(v))c.tiledAccent=v;else if(v==='')delete c.tiledAccent}
+  const clamp=(x,lo,hi)=>Math.min(hi,Math.max(lo,Number(x)));
+  if('tiledGlassBlur' in body&&Number.isFinite(Number(body.tiledGlassBlur)))c.tiledGlassBlur=clamp(body.tiledGlassBlur,0,40);
+  if('tiledGlassAlpha' in body&&Number.isFinite(Number(body.tiledGlassAlpha)))c.tiledGlassAlpha=clamp(body.tiledGlassAlpha,0,0.95);
+  if('tiledWallDim' in body&&Number.isFinite(Number(body.tiledWallDim)))c.tiledWallDim=clamp(body.tiledWallDim,0,0.9);
   saveConfig(c);
-  res.json({ok:true,theme:c.theme,homeTiles:c.homeTiles,uiVariant:c.uiVariant,omarchyLayout:c.omarchyLayout,tiledPanes:c.tiledPanes,tiledPalette:c.tiledPalette,tiledGlass:c.tiledGlass});
+  res.json({ok:true,theme:c.theme,homeTiles:c.homeTiles,uiVariant:c.uiVariant,omarchyLayout:c.omarchyLayout,tiledPanes:c.tiledPanes,tiledPalette:c.tiledPalette,tiledGlass:c.tiledGlass,tiledAccent:c.tiledAccent,tiledGlassBlur:c.tiledGlassBlur,tiledGlassAlpha:c.tiledGlassAlpha,tiledWallDim:c.tiledWallDim});
 });
 
 // ---- weather radar (CLI-style tile) --------------------------------------
@@ -725,7 +746,10 @@ app.get('/api/access',auth,(req,res)=>{
 // the client. Same JSON-on-disk pattern as loadConfig/saveConfig.
 const MACHINES_FILE=path.join(STATE_DIR,'machines.json');
 function loadMachines(){try{return JSON.parse(fs.readFileSync(MACHINES_FILE,'utf8'))}catch{return[]}}
-function saveMachines(list){fs.mkdirSync(path.dirname(MACHINES_FILE),{recursive:true});fs.writeFileSync(MACHINES_FILE,JSON.stringify(list,null,2))}
+// 0600: this file holds each remote machine's login password in plaintext
+// (needed to relay/authenticate to them), so it must not be readable by other
+// local users. chmod after write too, in case the file already existed 0644.
+function saveMachines(list){fs.mkdirSync(path.dirname(MACHINES_FILE),{recursive:true});fs.writeFileSync(MACHINES_FILE,JSON.stringify(list,null,2),{mode:0o600});try{fs.chmodSync(MACHINES_FILE,0o600)}catch{}}
 // Never leak the stored password to the client.
 function publicMachine(m){return{id:m.id,name:m.name,baseUrl:m.baseUrl,hasCreds:!!m.password}}
 

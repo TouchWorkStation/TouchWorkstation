@@ -118,6 +118,21 @@ function App(){
  // wallpaper. Only meaningful with the tiled skin active.
  const tiledGlass=tiledSkin&&!!settings?.tiledGlass;
  useEffect(()=>{document.documentElement.classList.toggle('tiled-glass',tiledGlass)},[tiledGlass]);
+ // User-tunable tiled appearance (Settings > Themes): accent colour, glass blur
+ // ("clarity"), tile transparency, and wallpaper dim. Driven as inline CSS
+ // custom properties so dragging a slider previews live; the CSS keeps the old
+ // hardcoded values as var() fallbacks, so an untouched install looks identical.
+ useEffect(()=>{
+  const s=document.documentElement.style;
+  const set=(k,v)=>{if(v==null||v==='')s.removeProperty(k);else s.setProperty(k,v)};
+  // Accent only overrides while the tiled skin is active, so it can't bleed
+  // into the standard purple themes; derived shades stay coherent via color-mix.
+  const accent=(tiledSkin&&settings?.tiledAccent)||null;
+  set('--tw-accent',accent);
+  set('--tw-glass-blur',settings?.tiledGlassBlur!=null?`${settings.tiledGlassBlur}px`:null);
+  set('--tw-glass-alpha',settings?.tiledGlassAlpha!=null?String(settings.tiledGlassAlpha):null);
+  set('--tw-wall-dim',settings?.tiledWallDim!=null?String(settings.tiledWallDim):null);
+ },[tiledSkin,settings?.tiledAccent,settings?.tiledGlassBlur,settings?.tiledGlassAlpha,settings?.tiledWallDim]);
  if(loading)return <Splash/>;
  if(!me)return <Login onDone={async(pw)=>{setLoginPw(pw);setMe(await api('/me'));setSettings(await api('/settings'))}}/>;
  // A fresh install ships a temporary generated password. Nothing else in the
@@ -921,10 +936,83 @@ function AiSignIn({go}){
   {!runtimes&&<div className="empty-state">Loading…</div>}
  </div>;
 }
+// Collapsible group of Setting cards. Remembers open/closed per group in
+// localStorage, and renders nothing when it has no visible children (so the
+// theme-only group disappears entirely on non-Omarchy builds).
+function SettingsGroup({id,title,icon:Icon,children}){
+ const key='tw.settingsGroup.'+id;
+ const[open,setOpen]=useState(()=>{try{return localStorage.getItem(key)!=='0'}catch{return true}});
+ const kids=React.Children.toArray(children).filter(Boolean);
+ if(!kids.length)return null;
+ function toggle(){setOpen(o=>{const n=!o;try{localStorage.setItem(key,n?'1':'0')}catch{}return n})}
+ return <section className="settings-group">
+  <button className={'settings-group-head'+(open?' open':'')} onClick={toggle} aria-expanded={open}>
+   {Icon&&<Icon/>}<h2>{title}</h2><span className="sg-count">{kids.length}</span><ChevronDown className="sg-chev"/>
+  </button>
+  {open&&<div className="settings-group-body">{kids}</div>}
+ </section>;
+}
+// A labelled range slider used by the tiled-appearance controls.
+function Slider({label,min,max,step,value,onChange,fmt}){
+ return <label className="tw-slider">
+  <span className="tw-slider-top"><span>{label}</span><span>{fmt?fmt(value):value}</span></span>
+  <input type="range" min={min} max={max} step={step} value={value} onChange={e=>onChange(Number(e.target.value))}/>
+ </label>;
+}
+// Tiled-theme personalization: accent colour (always), plus clarity /
+// transparency / background-dim sliders (only meaningful with Liquid glass on).
+// Writes settings through /api/settings; App() turns those into live CSS vars.
+function TiledAppearance({settings,setSettings}){
+ const glass=!!settings?.tiledGlass;
+ const t=useRef();
+ const persist=(patch)=>{setSettings(s=>({...s,...patch}));clearTimeout(t.current);t.current=setTimeout(()=>{api('/settings',{method:'POST',body:JSON.stringify(patch)}).catch(()=>{})},200)};
+ const accent=(settings?.tiledAccent||'#7ee787').toLowerCase();
+ const PRESETS=['#7ee787','#7aa2f7','#cba6f7','#f7768e','#e0af68','#2ac3de'];
+ const blur=settings?.tiledGlassBlur??18, alpha=settings?.tiledGlassAlpha??0.42, dim=settings?.tiledWallDim??0.34;
+ return <Setting icon={Palette} title="Tiled appearance" status={glass?'Custom':'Accent'} text="Make the tiled theme yours — pick an accent colour, and with Liquid glass on, tune how clear the tiles are, how much they let the wallpaper through, and how dark the background sits.">
+  <div className="ta-accent">
+   {PRESETS.map(c=><button key={c} className={'ta-swatch'+(accent===c?' active':'')} style={{'--sw':c}} onClick={()=>persist({tiledAccent:c})} aria-label={'Accent '+c}/>)}
+   <label className="ta-swatch ta-custom" title="Custom colour"><input type="color" value={accent} onChange={e=>persist({tiledAccent:e.target.value})}/><Plus/></label>
+   {settings?.tiledAccent&&<button className="ta-reset" onClick={()=>persist({tiledAccent:''})}>Reset</button>}
+  </div>
+  {glass&&<div className="ta-sliders">
+   <Slider label="Clarity" min={0} max={40} step={1} value={40-blur} onChange={v=>persist({tiledGlassBlur:40-v})} fmt={v=>v>=38?'Crystal':v<=4?'Frosted':`${v}`}/>
+   <Slider label="Transparency" min={0.05} max={0.9} step={0.02} value={alpha} onChange={v=>persist({tiledGlassAlpha:v})} fmt={v=>`${Math.round((1-v)*100)}% solid`}/>
+   <Slider label="Background dim" min={0} max={0.8} step={0.02} value={dim} onChange={v=>persist({tiledWallDim:v})} fmt={v=>`${Math.round(v*100)}%`}/>
+  </div>}
+ </Setting>;
+}
+// Change the unlock password from within Settings (previously reachable only at
+// the forced first-login screen). Reuses the existing /api/change-password.
+function PasswordSetting(){
+ const[open,setOpen]=useState(false),[cur,setCur]=useState(''),[next,setNext]=useState(''),[confirm,setConfirm]=useState(''),[msg,setMsg]=useState(''),[ok,setOk]=useState(false),[busy,setBusy]=useState(false);
+ async function submit(e){
+  e.preventDefault();setMsg('');setOk(false);
+  if(next.length<8){setMsg('Choose a password with at least 8 characters.');return}
+  if(next!==confirm){setMsg('Passwords don’t match.');return}
+  setBusy(true);
+  try{await api('/change-password',{method:'POST',body:JSON.stringify({currentPassword:cur,newPassword:next})});setOk(true);setMsg('Password updated.');setCur('');setNext('');setConfirm('');setOpen(false)}
+  catch(e){setMsg(e.message)}
+  finally{setBusy(false)}
+ }
+ return <Setting icon={LockKeyhole} title="Password & security" status="Unlock password" text="Change the password you use to unlock TouchWorkstation on this machine.">
+  {!open?<Button onClick={()=>{setOpen(true);setMsg('');setOk(false)}}>Change password</Button>:
+   <form className="pw-form" onSubmit={submit}>
+    <input type="password" placeholder="Current password" value={cur} onChange={e=>setCur(e.target.value)} autoFocus/>
+    <input type="password" placeholder="New password (min. 8 characters)" value={next} onChange={e=>setNext(e.target.value)}/>
+    <input type="password" placeholder="Confirm new password" value={confirm} onChange={e=>setConfirm(e.target.value)}/>
+    <div className="pw-form-actions"><Button className="primary" disabled={busy}>{busy?'Saving…':'Save password'}</Button><Button type="button" onClick={()=>{setOpen(false);setMsg('')}}>Cancel</Button></div>
+   </form>}
+  {msg&&<div className={ok?'settings-message':'inline-error'}>{msg}</div>}
+ </Setting>;
+}
 function SettingsView({settings,setSettings,go,onMachines}){const[vpn,setVpn]=useState(null),[github,setGithub]=useState(null),[msg,setMsg]=useState(''),[showRA,setShowRA]=useState(false),[showWP,setShowWP]=useState(false),[wpVersion,setWpVersion]=useState(0);const[me]=useLoad(()=>api('/me'),[]);const[status]=usePoll(()=>api('/status'),5000,[]);useEffect(()=>{api('/vpn/status').then(setVpn);api('/github/status').then(setGithub)},[]);
  const localUrl=me?.hostname?`http://${me.hostname}.local:8088`:null;
  const ipUrl=status?.ip?`http://${status.ip}:8088`:null;
+ const isOmarchy=settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY;
+ const isTiled=isOmarchy&&omarchyLayoutOf(settings)==='tiled';
  return <div className="settings page-pad">{showRA&&<RemoteAccess onClose={()=>{setShowRA(false);api('/vpn/status').then(setVpn)}}/>}{showWP&&<WallpaperPicker onClose={()=>setShowWP(false)} onSaved={()=>setWpVersion(v=>v+1)}/>}<PageTitle kicker="SETTINGS" title="Keep it simple." body="Tell TouchWorkstation what you want to do. Advanced Linux details stay out of the way."/>
+ <SettingsGroup id="connectivity" title="Connectivity" icon={Globe2}>
  <div className="access-card">
   <div className="access-card-head"><Globe2/><div><strong>How to get back in</strong><small>Closing a terminal or this browser tab never stops TouchWorkstation \u2014 it keeps running on the machine. Come back anytime at:</small></div></div>
   {(localUrl||ipUrl)?<div className="access-urls">
@@ -935,15 +1023,20 @@ function SettingsView({settings,setSettings,go,onMachines}){const[vpn,setVpn]=us
  </div>
  <Setting icon={Globe2} title="Access away from home" status={vpn?.connected?'Ready':'Home only'} text={vpn?.connected?'Your private remote connection is active.':'Do you want to access this computer when you\u2019re away from home? We\u2019ll walk you through a secure VPN.'}><Button className="primary" onClick={()=>setShowRA(true)}>{vpn?.connected?'Manage':'Yes, set it up'}</Button></Setting>
  <Setting icon={GitBranch} title="GitHub" status={github?.connected?'Connected':'Not connected'} text={github?.connected?`Connected as ${github.user||'your GitHub account'}.`:'Do you want to clone, pull and push your projects from your phone?'}><Button onClick={async()=>{if(github?.connected){go('projects');return}try{const sessionId=await resolveTerminalTarget('github-login');go('terminal',{pendingCommand:'gh auth login',sessionId})}catch{go('terminal',{pendingCommand:'gh auth login'})}}}>{github?.connected?'Manage':'Connect GitHub'}</Button></Setting>
+ <Setting icon={Server} title="Machines & cluster" status="Fleet" text="Add and name your other machines, then see every node's CPU, RAM, GPU/VRAM, disk and network side by side in the cluster view."><Button onClick={()=>onMachines?.()}>Manage machines</Button></Setting>
+ </SettingsGroup>
+ <SettingsGroup id="ai" title="AI" icon={Bot}>
  <Setting icon={Bot} title="AI sign-in" status="One place" text="Sign in to each AI CLI once, here. It's your computer's own login — every agent and CLI launch reuses it, so you never sign in again per-agent."><AiSignIn go={go}/></Setting>
  <Setting icon={Bot} title="AI Agents" status="Configurable" text="Agents are configured in the Agents screen — choose a runtime, scope it to a project, and set permissions."><Button onClick={()=>go('agents')}>Go to Agents</Button></Setting>
- <Setting icon={Server} title="Machines & cluster" status="Fleet" text="Add and name your other machines, then see every node's CPU, RAM, GPU/VRAM, disk and network side by side in the cluster view."><Button onClick={()=>onMachines?.()}>Manage machines</Button></Setting>
+ </SettingsGroup>
+ <SettingsGroup id="themes" title="Appearance & Themes" icon={Palette}>
  <Setting icon={Palette} title="Appearance" status={themeLabel(settings?.theme)} text="Choose how TouchWorkstation feels. Your choice is saved and applied instantly."><div className="theme-picker">{[['aubergine','Aubergine','aub'],['charcoal','Charcoal','char'],['solar','Solar','sol']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.theme||'aubergine')===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,theme:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({theme:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
  <Setting icon={LayoutGrid} title="Interface" status={variantLabel(settings?.uiVariant)} text="Omarchy replaces the home screen and terminal with a full-black, keyboard-driven layout. This overrides whatever the installed build set by default."><div className="theme-picker">{[['standard','Standard','std'],['omarchy','Omarchy','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.uiVariant?settings.uiVariant:(BUILD_OMARCHY?'omarchy':'standard'))===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,uiVariant:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({uiVariant:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>
  {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&<Setting icon={LayoutGrid} title="Home Layout" status={omarchyLayoutOf(settings)==='tiled'?'Tiled':'Classic'} text="Tiled shows several live, independently-usable panes at once — terminal, files, an editor, processes, and stats — like a real tiling window manager."><div className="theme-picker">{[['classic','Classic','std'],['tiled','Tiled','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+(omarchyLayoutOf(settings)===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,omarchyLayout:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({omarchyLayout:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>}
  {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&omarchyLayoutOf(settings)==='tiled'&&<Setting icon={LayoutGrid} title="Tiled panes" status={`${(settings?.tiledPanes?.length?settings.tiledPanes:DEFAULT_TILED_PANES).length} shown`} text="Choose which panes appear on the tiled home screen. Turn off the ones you don't use to give the rest more room."><TiledPaneSettings settings={settings} setSettings={setSettings}/></Setting>}
  {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&omarchyLayoutOf(settings)==='tiled'&&<Setting icon={Palette} title="Tiled colours" status={settings?.tiledPalette==='color'?'Colour':'Mono'} text="Mono keeps every pane green. Colour gives each pane its own accent border and icon colour, so they read apart at a glance."><div className="theme-picker">{[['mono','Mono','std'],['color','Colour','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+((settings?.tiledPalette||'mono')===id?' active':'')} onClick={async()=>{setSettings(s=>({...s,tiledPalette:id}));try{await api('/settings',{method:'POST',body:JSON.stringify({tiledPalette:id})})}catch{}}}><i/>{label}</button>)}</div></Setting>}
  {(settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY)&&omarchyLayoutOf(settings)==='tiled'&&<Setting icon={ImageIcon} title="Liquid glass" status={settings?.tiledGlass?'On':'Off'} text="Translucent, frosted tiles floating over your Omarchy wallpaper. Set a wallpaper below for it to show through."><div className="theme-picker">{[['off','Off','std'],['on','Glass','omar']].map(([id,label,cls])=><button key={id} className={'theme-opt '+cls+(((settings?.tiledGlass?'on':'off'))===id?' active':'')} onClick={async()=>{const on=id==='on';setSettings(s=>({...s,tiledGlass:on}));try{await api('/settings',{method:'POST',body:JSON.stringify({tiledGlass:on})})}catch{}}}><i/>{label}</button>)}</div></Setting>}
+ {isTiled&&<TiledAppearance settings={settings} setSettings={setSettings}/>}
  <Setting icon={ImageIcon} title="Wallpaper" status="Omarchy home screen" text="Upload and crop a photo for the Omarchy home screen's background.">
   <div className="wp-setting-row">
    <img className="wp-thumb" src={`/wallpaper.jpg?v=${wpVersion}`} alt="" onError={(e)=>{e.currentTarget.style.visibility='hidden'}} onLoad={(e)=>{e.currentTarget.style.visibility='visible'}}/>
@@ -951,8 +1044,12 @@ function SettingsView({settings,setSettings,go,onMachines}){const[vpn,setVpn]=us
   </div>
  </Setting>
  <Setting icon={Grid3X3} title="Home screen" status={`${(settings?.homeTiles&&settings.homeTiles.length)||4} tiles`} text="Choose which shortcuts show on the home screen, and in what order."><HomeTileSettings settings={settings} setSettings={setSettings}/></Setting>
- <BuildInfo me={me}/>
+ </SettingsGroup>
+ <SettingsGroup id="system" title="System" icon={SlidersHorizontal}>
+ <PasswordSetting/>
  <UpdateCheck go={go}/>
+ <BuildInfo me={me}/>
+ </SettingsGroup>
  {msg&&<div className="settings-message"><Info/>{msg}</div>}</div>}
 // Real update check (previous version was a hardcoded placeholder). Hits
 // GitHub, compares against the running build's SHA. If this install has

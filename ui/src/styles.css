@@ -468,6 +468,38 @@ html[data-theme="solar"]{
 html[data-theme="solar"] body{background:#1a1206}
 
 /* real theme picker in settings */
+/* Grouped settings (collapsible sections) */
+.settings-group{margin:10px 0 4px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:rgba(255,255,255,.015)}
+.settings-group-head{width:100%;display:flex;align-items:center;gap:10px;padding:14px 16px;background:transparent;border:0;color:var(--text);cursor:pointer;text-align:left}
+.settings-group-head svg{width:17px;color:var(--muted)}
+.settings-group-head h2{font-size:14px;margin:0;font-weight:600;letter-spacing:.01em}
+.settings-group-head .sg-count{margin-left:auto;font-size:11px;color:var(--faint);background:rgba(255,255,255,.05);border-radius:999px;padding:1px 8px;min-width:20px;text-align:center}
+.settings-group-head .sg-chev{width:16px;color:var(--muted);transition:transform .18s ease}
+.settings-group-head:not(.open) .sg-chev{transform:rotate(-90deg)}
+.settings-group-body{padding:2px 12px 12px;display:flex;flex-direction:column;gap:10px;animation:tw-fade .18s ease}
+.settings-group .setting-row,.settings-group .access-card{margin:0}
+/* Labelled range slider */
+.tw-slider{display:block;margin-top:2px}
+.tw-slider-top{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px}
+.tw-slider-top span:last-child{color:var(--text);font-variant-numeric:tabular-nums}
+.tw-slider input[type=range]{width:100%;height:22px;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
+.tw-slider input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:999px;background:linear-gradient(90deg,var(--accent),rgba(255,255,255,.12))}
+.tw-slider input[type=range]::-moz-range-track{height:5px;border-radius:999px;background:rgba(255,255,255,.14)}
+.tw-slider input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;margin-top:-6px;width:17px;height:17px;border-radius:50%;background:#fff;border:2px solid var(--accent);box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.tw-slider input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:#fff;border:2px solid var(--accent)}
+/* Tiled appearance: accent swatches + sliders */
+.ta-accent{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:12px 0 4px}
+.ta-swatch{width:30px;height:30px;border-radius:50%;border:2px solid var(--line2);background:var(--sw,#7ee787);cursor:pointer;padding:0;position:relative;display:grid;place-items:center}
+.ta-swatch.active{border-color:#fff;box-shadow:0 0 0 2px var(--accent)}
+.ta-custom{background:conic-gradient(from 0deg,#f7768e,#e0af68,#7ee787,#2ac3de,#7aa2f7,#cba6f7,#f7768e);overflow:hidden}
+.ta-custom svg{width:14px;color:#fff;mix-blend-mode:difference}
+.ta-custom input[type=color]{position:absolute;inset:0;opacity:0;width:100%;height:100%;border:0;padding:0;cursor:pointer}
+.ta-reset{margin-left:auto;background:transparent;border:0;color:var(--muted);font-size:11px;cursor:pointer;text-decoration:underline}
+.ta-sliders{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+/* Inline change-password form */
+.pw-form{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.pw-form input{border:1px solid var(--line2);background:rgba(0,0,0,.2);color:#fff;border-radius:9px;padding:10px 11px;font-size:13px}
+.pw-form-actions{display:flex;gap:8px}
 .theme-picker{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0 6px}
 .theme-opt{border:1px solid var(--line2);border-radius:14px;background:rgba(255,255,255,.03);padding:10px;cursor:pointer;text-align:center;color:var(--muted);font-size:12px}
 .theme-opt.active{border-color:var(--accent);color:#fff}
@@ -1003,14 +1035,14 @@ html.omarchy-build,html.omarchy-build body,html.omarchy-build #root{background:#
    dark ground if no wallpaper is set, so it still looks intentional. */
 .tiled-glass .tiled-dash{
   background:
-    linear-gradient(rgba(0,0,0,.34),rgba(0,0,0,.5)),
+    linear-gradient(rgba(0,0,0,var(--tw-wall-dim,.34)),rgba(0,0,0,calc(var(--tw-wall-dim,.34) + .16))),
     url(/wallpaper.jpg) center/cover no-repeat fixed,
     #0a0a12;
 }
 .tiled-glass .tile-pane{
-  background:rgba(18,18,26,.40);
-  -webkit-backdrop-filter:blur(20px) saturate(1.3);
-  backdrop-filter:blur(20px) saturate(1.3);
+  background:rgba(18,18,26,var(--tw-glass-alpha,.40));
+  -webkit-backdrop-filter:blur(var(--tw-glass-blur,20px)) saturate(1.3);
+  backdrop-filter:blur(var(--tw-glass-blur,20px)) saturate(1.3);
   border:1px solid rgba(255,255,255,.18);
   box-shadow:0 10px 34px rgba(0,0,0,.4);
 }
@@ -1047,7 +1079,12 @@ html.omarchy-build,html.omarchy-build body,html.omarchy-build #root{background:#
   --bg:#000;--bg2:#050505;--panel:#050505;--panel2:#0a0a0a;--panel3:#101010;
   --line:rgba(255,255,255,.10);--line2:rgba(255,255,255,.18);
   --text:#e6e6e6;--muted:#8a8a8a;--faint:#6a6a6a;
-  --accent:#7ee787;--accent2:#1f6f3a;--accent3:#0d2f18;--radius:8px;
+  /* Accent is user-tunable (Settings > Themes): --tw-accent is set inline when
+     the user picks a colour, else the classic green. Shades derive via color-mix
+     so buttons/borders stay coherent with any accent. */
+  --accent:var(--tw-accent,#7ee787);
+  --accent2:color-mix(in srgb, var(--accent) 42%, #000);
+  --accent3:color-mix(in srgb, var(--accent) 20%, #000);--radius:8px;
   --shadow:0 10px 30px rgba(0,0,0,.6);
   font-family:ui-monospace,SFMono-Regular,'JetBrains Mono',Menlo,Consolas,monospace;
 }
@@ -1104,7 +1141,7 @@ html.tiled-glass body{background:transparent}
 html.tiled-glass body::before{
   content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
   background:
-    linear-gradient(rgba(0,0,0,.34),rgba(0,0,0,.5)),
+    linear-gradient(rgba(0,0,0,var(--tw-wall-dim,.34)),rgba(0,0,0,calc(var(--tw-wall-dim,.34) + .16))),
     url(/wallpaper.jpg) center/cover no-repeat,
     #0a0a12;
 }
@@ -1116,9 +1153,9 @@ html.tiled-glass body::before{
 .tiled-glass .home-tile-row,.tiled-glass .launcher,.tiled-glass .project-card,.tiled-glass .agent-card,
 .tiled-glass .clipboard-card,.tiled-glass .docker-card,.tiled-glass .runtime-chip,.tiled-glass .app-card,
 .tiled-glass .agent-chat-compose input,.tiled-glass .terminal-window{
-  background:rgba(18,18,26,.42);
-  -webkit-backdrop-filter:blur(18px) saturate(1.25);
-  backdrop-filter:blur(18px) saturate(1.25);
+  background:rgba(18,18,26,var(--tw-glass-alpha,.42));
+  -webkit-backdrop-filter:blur(var(--tw-glass-blur,18px)) saturate(1.25);
+  backdrop-filter:blur(var(--tw-glass-blur,18px)) saturate(1.25);
   border-color:rgba(255,255,255,.16);
 }
 /* The tiled home's own dashboard background comes from the fixed layer now. */
