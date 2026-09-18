@@ -901,7 +901,92 @@ function TermAccessBar(){
   <button onClick={dismiss} title="Hide" aria-label="Hide"><X/></button>
  </div>;
 }
-function Files(){const[data,setData]=useState(null),[err,setErr]=useState('');async function load(p=''){try{setData(await api('/files'+(p?`?path=${encodeURIComponent(p)}`:'')));setErr('')}catch(e){setErr(e.message)}}useEffect(()=>{load()},[]);return <div className="page-pad"><PageTitle kicker="FILES" title="Your files" body="Browse the home folder without squeezing a desktop file manager onto your phone."/><div className="file-toolbar">{data?.parent&&<Button onClick={()=>load(data.parent)}><ArrowLeft/> Up</Button>}<code>{shortPath(data?.path)}</code></div>{err&&<div className="inline-error">{err}</div>}<div className="file-list">{data?.entries?.map(f=><button key={f.path} className="file-row" onClick={()=>f.directory&&load(f.path)}><span className={'file-icon '+(f.directory?'folder':'')}>{f.directory?<Folder/>:<FileText/>}</span><div><strong>{f.name}</strong><small>{f.directory?'Folder':'File'}</small></div>{f.directory&&<ChevronRight/>}</button>)}</div></div>}
+export function fmtBytes(n){if(n==null)return'';if(n<1024)return n+' B';const u=['KB','MB','GB','TB'];let i=-1;do{n/=1024;i++}while(n>=1024&&i<u.length-1);return (n<10?n.toFixed(1):Math.round(n))+' '+u[i]}
+// Stream one File to /api/files/upload with progress. Raw octet-stream body so
+// the server can pipe it straight to disk (see server/index.js) — no multipart.
+export function uploadFile(cwd,file,onProgress,overwrite){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();xhr.open('POST',`/api/files/upload?path=${encodeURIComponent(cwd)}&name=${encodeURIComponent(file.name)}${overwrite?'&overwrite=1':''}`);xhr.withCredentials=true;xhr.setRequestHeader('Content-Type','application/octet-stream');xhr.upload.onprogress=e=>{if(e.lengthComputable&&onProgress)onProgress(e.loaded/e.total)};xhr.onload=()=>{if(xhr.status>=200&&xhr.status<300)resolve();else{let msg='Upload failed';try{msg=JSON.parse(xhr.responseText).error||msg}catch{}const err=new Error(msg);err.status=xhr.status;reject(err)}};xhr.onerror=()=>reject(new Error('Upload failed'));xhr.send(file)})}
+const fileKindIcon={folder:Folder,image:ImageIcon,pdf:FileText,video:PlayCircle,audio:PlayCircle,text:FileText,other:FileText};
+function Files(){
+ const[data,setData]=useState(null),[err,setErr]=useState(''),[busy,setBusy]=useState(''),[all,setAll]=useState(false);
+ const[preview,setPreview]=useState(null),[moving,setMoving]=useState(null);
+ const cwd=data?.path||'';
+ const fileInput=useRef();
+ async function load(p=cwd,showAll=all){try{const q=[];if(p)q.push(`path=${encodeURIComponent(p)}`);if(showAll)q.push('all=1');setData(await api('/files'+(q.length?`?${q.join('&')}`:'')));setErr('')}catch(e){setErr(e.message)}}
+ useEffect(()=>{load('')},[]);
+ async function act(fn){setErr('');setBusy('working');try{await fn();await load()}catch(e){setErr(e.message)}finally{setBusy('')}}
+ function newFolder(){const name=window.prompt('New folder name:');if(!name)return;act(()=>api('/files/mkdir',{method:'POST',body:JSON.stringify({path:cwd,name})}))}
+ function rename(f){const name=window.prompt('Rename to:',f.name);if(!name||name===f.name)return;act(()=>api('/files/rename',{method:'POST',body:JSON.stringify({path:f.path,newName:name})}))}
+ function del(f){if(!window.confirm(`Delete ${f.name}${f.directory?' and everything in it':''}? This cannot be undone.`))return;setPreview(null);act(()=>api('/files/delete',{method:'POST',body:JSON.stringify({path:f.path})}))}
+ async function onPick(e){const files=[...e.target.files];e.target.value='';for(const file of files){setBusy(`Uploading ${file.name}…`);try{await uploadFile(cwd,file,()=>{})}catch(err){if(err.status===409&&window.confirm(`${file.name} already exists here. Replace it?`)){try{await uploadFile(cwd,file,()=>{},true)}catch(e2){setErr(e2.message)}}else{setErr(err.message)}}}setBusy('');load()}
+ const segs=[];if(data){const home=data.home||'';let acc=home;segs.push({name:'~',path:home});const rest=data.path.startsWith(home)?data.path.slice(home.length).split('/').filter(Boolean):[];for(const s of rest){acc=acc+'/'+s;segs.push({name:s,path:acc})}}
+ return <div className="page-pad files-page">
+  <PageTitle kicker="FILES" title="Your files" body="A real file manager — upload, download, preview, organise. Scoped to your home folder."/>
+  <div className="file-toolbar">
+   {data?.parent&&<Button onClick={()=>load(data.parent)}><ArrowLeft/> Up</Button>}
+   <div className="file-crumbs">{segs.map((s,i)=><span key={s.path}>{i>0&&<ChevronRight/>}<button onClick={()=>load(s.path)}>{s.name}</button></span>)}</div>
+   <div className="file-tools">
+    <button className={'file-tool'+(all?' on':'')} title="Show hidden files" onClick={()=>{const n=!all;setAll(n);load(cwd,n)}}><Eye/></button>
+    <button className="file-tool" title="New folder" onClick={newFolder}><Plus/></button>
+    <button className="file-tool" title="Upload" onClick={()=>fileInput.current?.click()}><Upload/></button>
+    <input ref={fileInput} type="file" multiple hidden onChange={onPick}/>
+   </div>
+  </div>
+  {busy&&<div className="file-busy"><Loader className="spin"/> {busy==='working'?'Working…':busy}</div>}
+  {err&&<div className="inline-error">{err}</div>}
+  <div className="file-list">{data?.entries?.map(f=>{const Icon=fileKindIcon[f.kind]||FileText;return <div key={f.path} className="file-row2">
+   <button className="file-main" onClick={()=>f.directory?load(f.path):setPreview(f)}>
+    <span className={'file-icon '+(f.directory?'folder':f.kind)}><Icon/></span>
+    <div className="file-meta"><strong>{f.name}</strong><small>{f.directory?'Folder':`${fmtBytes(f.size)} · ${fmtWhen(new Date(f.mtimeMs).toISOString())}`}</small></div>
+   </button>
+   {!f.directory&&<a className="file-act" href={`/api/files/download?path=${encodeURIComponent(f.path)}`} title="Download" onClick={e=>e.stopPropagation()}><Download/></a>}
+   <button className="file-act" title="Rename" onClick={()=>rename(f)}><FileText/></button>
+   <button className="file-act" title="Move" onClick={()=>setMoving(f)}><Share/></button>
+   <button className="file-act danger" title="Delete" onClick={()=>del(f)}><Trash2/></button>
+  </div>})}{data&&!data.entries.length&&<Empty>This folder is empty.</Empty>}</div>
+  {preview&&<FilePreview file={preview} onClose={()=>setPreview(null)} onRename={rename} onDelete={del} onMove={f=>{setPreview(null);setMoving(f)}}/>}
+  {moving&&<FolderPicker file={moving} start={data?.home} onClose={()=>setMoving(null)} onMoved={()=>{setMoving(null);load()}} onError={setErr}/>}
+ </div>;
+}
+// Full-screen preview by file kind, sourced from /api/files/raw (text via the
+// existing /api/file-content). Carries the same download/rename/move/delete
+// actions so a file can be managed straight from its preview.
+function FilePreview({file,onClose,onRename,onDelete,onMove}){
+ const raw=`/api/files/raw?path=${encodeURIComponent(file.path)}`;
+ const[text,setText]=useState(null),[terr,setTerr]=useState('');
+ useEffect(()=>{if(file.kind==='text'){api('/file-content?path='+encodeURIComponent(file.path)).then(r=>setText(r.content)).catch(e=>setTerr(e.message))}},[file.path,file.kind]);
+ return <div className="fp-overlay" onClick={onClose}><div className="fp-card" onClick={e=>e.stopPropagation()}>
+  <div className="fp-head"><strong>{file.name}</strong><button className="ms-x" onClick={onClose} aria-label="Close"><X/></button></div>
+  <div className="fp-body">
+   {file.kind==='image'&&<img src={raw} alt={file.name}/>}
+   {file.kind==='video'&&<video src={raw} controls playsInline/>}
+   {file.kind==='audio'&&<audio src={raw} controls/>}
+   {file.kind==='pdf'&&<iframe src={raw} title={file.name}/>}
+   {file.kind==='text'&&(terr?<div className="inline-error">{terr}</div>:<pre className="fp-text">{text??'Loading…'}</pre>)}
+   {file.kind==='other'&&<div className="fp-other"><FileText/><p>No preview for this file type.</p><small>{fmtBytes(file.size)}</small></div>}
+  </div>
+  <div className="fp-actions">
+   <a className="btn" href={`/api/files/download?path=${encodeURIComponent(file.path)}`}><Download/> Download</a>
+   <Button onClick={()=>onRename(file)}>Rename</Button>
+   <Button onClick={()=>onMove(file)}>Move</Button>
+   <Button className="danger" onClick={()=>onDelete(file)}><Trash2/> Delete</Button>
+  </div>
+ </div></div>;
+}
+// Minimal folder chooser for Move: browse directories under home, then
+// "Move here". Reuses /api/files (folders only).
+function FolderPicker({file,start,onClose,onMoved,onError}){
+ const[data,setData]=useState(null);
+ function load(p){api('/files'+(p?`?path=${encodeURIComponent(p)}`:'')).then(setData).catch(e=>onError?.(e.message))}
+ useEffect(()=>{load(start||'')},[]);
+ const dirs=(data?.entries||[]).filter(e=>e.directory&&e.path!==file.path);
+ async function moveHere(){try{await api('/files/move',{method:'POST',body:JSON.stringify({path:file.path,dest:data.path})});onMoved()}catch(e){onError?.(e.message)}}
+ return <div className="fp-overlay" onClick={onClose}><div className="fp-card fp-picker" onClick={e=>e.stopPropagation()}>
+  <div className="fp-head"><strong>Move “{file.name}” to…</strong><button className="ms-x" onClick={onClose} aria-label="Close"><X/></button></div>
+  <div className="file-toolbar"> {data?.parent&&<Button onClick={()=>load(data.parent)}><ArrowLeft/> Up</Button>}<code>{shortPath(data?.path)}</code></div>
+  <div className="fp-picker-list">{dirs.length?dirs.map(d=><button key={d.path} className="file-row" onClick={()=>load(d.path)}><span className="file-icon folder"><Folder/></span><div><strong>{d.name}</strong></div><ChevronRight/></button>):<div className="ms-empty">No subfolders here.</div>}</div>
+  <div className="fp-actions"><Button className="primary" onClick={moveHere}>Move here</Button><Button onClick={onClose}>Cancel</Button></div>
+ </div></div>;
+}
 
 // ------------------------------ SETTINGS -----------------------------------
 // One place to authenticate every AI CLI, so signing in is a once-per-machine

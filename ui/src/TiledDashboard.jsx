@@ -21,7 +21,7 @@ import {
   Code2, GitBranch, Box, Sparkles, ClipboardList, Keyboard, Settings as SettingsIcon,
   Bot, House, Grid3X3, CloudRain,
 } from 'lucide-react';
-import { api, usePoll } from './main.jsx';
+import { api, usePoll, uploadFile } from './main.jsx';
 
 // The Omarchy home is rendered "bare" (no topbar, no dock — see Shell in
 // main.jsx), so unlike every other screen this one has to carry its own way
@@ -357,25 +357,47 @@ function FileTreePane({ onOpenFile }) {
   const [dir, setDir] = useState(null); // null = home
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState('');
+  const fileInput = useRef();
 
-  useEffect(() => {
+  function reload() {
     api('/files' + (dir ? `?path=${encodeURIComponent(dir)}` : '')).then((r) => { setData(r); setErr(''); }).catch((e) => setErr(e.message));
-  }, [dir]);
+  }
+  useEffect(reload, [dir]);
+
+  async function onPick(e) {
+    const files = [...e.target.files]; e.target.value = '';
+    const cwd = data?.path || '';
+    for (const file of files) {
+      setBusy(`Uploading ${file.name}…`);
+      try { await uploadFile(cwd, file, () => {}); }
+      catch (err) { if (err.status === 409 && confirm(`${file.name} exists. Replace?`)) { try { await uploadFile(cwd, file, () => {}, true); } catch (e2) { setErr(e2.message); } } else setErr(err.message); }
+    }
+    setBusy(''); reload();
+  }
 
   return (
     <Pane
       icon={Folder}
       title="Files"
       className="tile-files"
-      right={data?.parent && <button className="tile-mini-btn" onClick={() => setDir(data.parent)}><ChevronUp /> Up</button>}
+      right={<>
+        <button className="tile-mini-btn" onClick={() => fileInput.current?.click()}><Upload /> Upload</button>
+        {data?.parent && <button className="tile-mini-btn" onClick={() => setDir(data.parent)}><ChevronUp /> Up</button>}
+        <input ref={fileInput} type="file" multiple hidden onChange={onPick} />
+      </>}
     >
       {err && <div className="tile-pane-error">{err}</div>}
+      {busy && <div className="tile-pane-empty">{busy}</div>}
       <div className="tile-file-list">
         {data?.entries?.map((f) => (
-          <button key={f.path} className="tile-file-row" onClick={() => (f.directory ? setDir(f.path) : onOpenFile(f.path))}>
-            {f.directory ? <Folder /> : <FileText />}
-            <span>{f.name}</span>
-          </button>
+          <div key={f.path} className="tile-file-row">
+            <button className="tile-file-main" onClick={() => (f.directory ? setDir(f.path) : onOpenFile(f.path))}>
+              {f.directory ? <Folder /> : <FileText />}
+              <span>{f.name}</span>
+            </button>
+            {!f.directory && <a className="tile-file-dl" href={`/api/files/download?path=${encodeURIComponent(f.path)}`} title="Download"><Download /></a>}
+          </div>
         ))}
         {data && !data.entries?.length && <div className="tile-pane-empty">Empty folder.</div>}
       </div>

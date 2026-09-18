@@ -343,8 +343,39 @@ async function computeStatus(){
 }
 app.get('/api/status',auth,async(req,res)=>{res.json(await computeStatus())});
 
-function safeHome(p=''){const resolved=path.resolve(p||HOME);if(!resolved.startsWith(path.resolve(HOME)))throw new Error('Path outside home directory is blocked');return resolved}
-app.get('/api/files',auth,(req,res)=>{try{const p=safeHome(req.query.path||HOME);const entries=fs.readdirSync(p,{withFileTypes:true}).filter(x=>!x.name.startsWith('.')).map(x=>({name:x.name,directory:x.isDirectory(),path:path.join(p,x.name)})).sort((a,b)=>Number(b.directory)-Number(a.directory)||a.name.localeCompare(b.name));const parent=p===HOME?null:path.dirname(p);res.json({path:p,parent,entries})}catch(e){res.status(400).json({error:e.message})}});
+// Resolve a path and guarantee it stays inside HOME. The equality check plus
+// the trailing-separator prefix is deliberate: a bare startsWith(HOME) would
+// also accept a sibling like /home/chris-evil for HOME=/home/chris. This guard
+// now protects write/delete endpoints too, so that edge matters.
+function safeHome(p=''){const H=path.resolve(HOME);const resolved=path.resolve(H,p||H);if(resolved!==H&&!resolved.startsWith(H+path.sep))throw new Error('Path outside home directory is blocked');return resolved}
+// Classify a file by extension so the client knows what it can preview inline.
+function fileKind(name){
+  const e=(name.split('.').pop()||'').toLowerCase();
+  if(['png','jpg','jpeg','gif','webp','bmp','svg','avif','ico'].includes(e))return'image';
+  if(e==='pdf')return'pdf';
+  if(['mp4','webm','mov','mkv','m4v'].includes(e))return'video';
+  if(['mp3','wav','ogg','flac','m4a','aac','opus'].includes(e))return'audio';
+  if(['txt','md','markdown','json','js','jsx','ts','tsx','css','scss','html','xml','yml','yaml','toml','ini','conf','sh','bash','py','rs','go','c','h','cpp','java','rb','php','sql','log','env','gitignore','csv'].includes(e))return'text';
+  return'other';
+}
+// A single path segment safe to write to disk: no separators, no traversal.
+function safeName(name){const n=String(name||'').replace(/[/\\]/g,'').replace(/^\.+/,'').trim();if(!n||n==='.'||n==='..')throw new Error('Invalid name');return n.slice(0,255)}
+app.get('/api/files',auth,(req,res)=>{try{
+  const p=safeHome(req.query.path||HOME);
+  const all=req.query.all==='1';
+  const entries=fs.readdirSync(p,{withFileTypes:true})
+    .filter(x=>all||!x.name.startsWith('.'))
+    .map(x=>{
+      const full=path.join(p,x.name);
+      const dir=x.isDirectory();
+      let size=0,mtimeMs=0;
+      try{const st=fs.statSync(full);size=st.size;mtimeMs=st.mtimeMs}catch{}
+      return {name:x.name,directory:dir,path:full,size,mtimeMs,kind:dir?'folder':fileKind(x.name)};
+    })
+    .sort((a,b)=>Number(b.directory)-Number(a.directory)||a.name.localeCompare(b.name));
+  const parent=p===path.resolve(HOME)?null:path.dirname(p);
+  res.json({path:p,parent,home:path.resolve(HOME),entries});
+}catch(e){res.status(400).json({error:e.message})}});
 
 // Read/write a single file's raw contents — the Tiled Omarchy layout's
 // config-editor pane. Deliberately separate from /api/files (which only
@@ -366,6 +397,90 @@ app.post('/api/file-content',auth,(req,res)=>{
     if(!req.body?.path)throw new Error('path is required');
     const p=safeHome(req.body.path);
     fs.writeFileSync(p,String(req.body.content??''));
+    res.json({ok:true});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+
+// ---- File manager: serve, download, upload, and organize files -------------
+// All guarded by safeHome() so nothing escapes the home directory, the same
+// boundary the browser/editor already enforce.
+const RAW_TYPES={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',bmp:'image/bmp',svg:'image/svg+xml',avif:'image/avif',ico:'image/x-icon',pdf:'application/pdf',mp4:'video/mp4',webm:'video/webm',mov:'video/quicktime',mkv:'video/x-matroska',m4v:'video/mp4',mp3:'audio/mpeg',wav:'audio/wav',ogg:'audio/ogg',flac:'audio/flac',m4a:'audio/mp4',aac:'audio/aac',opus:'audio/opus'};
+// Inline serve for previews (image/PDF/video/audio). sendFile handles Range
+// requests on its own, so video/audio seek correctly.
+app.get('/api/files/raw',auth,(req,res)=>{
+  try{
+    const p=safeHome(req.query.path);
+    const st=fs.statSync(p);
+    if(st.isDirectory())throw new Error('That path is a directory');
+    const ext=(p.split('.').pop()||'').toLowerCase();
+    if(RAW_TYPES[ext])res.type(RAW_TYPES[ext]);
+    res.sendFile(p,{dotfiles:'allow',headers:{'Cache-Control':'no-store'}});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+// Attachment download (save to the phone).
+app.get('/api/files/download',auth,(req,res)=>{
+  try{
+    const p=safeHome(req.query.path);
+    if(fs.statSync(p).isDirectory())throw new Error('Cannot download a folder');
+    res.download(p,path.basename(p),{dotfiles:'allow'});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+// Upload: the raw request body is the file bytes (application/octet-stream), so
+// express.json never touches it and there's no multipart dependency — the same
+// dependency-free philosophy as the wallpaper upload, but streamed so large
+// files don't buffer in memory.
+app.post('/api/files/upload',auth,(req,res)=>{
+  try{
+    const dir=safeHome(req.query.path||HOME);
+    if(!fs.statSync(dir).isDirectory())throw new Error('Upload target is not a folder');
+    const name=safeName(req.query.name);
+    const dest=path.join(dir,name);
+    if(dest!==safeHome(dest))throw new Error('Invalid destination');
+    if(fs.existsSync(dest)&&req.query.overwrite!=='1')return res.status(409).json({error:'A file with that name already exists'});
+    const out=fs.createWriteStream(dest);
+    req.pipe(out);
+    out.on('finish',()=>res.json({ok:true,path:dest}));
+    out.on('error',e=>{try{fs.unlinkSync(dest)}catch{};res.status(500).json({error:e.message})});
+    req.on('error',()=>{try{out.destroy();fs.unlinkSync(dest)}catch{}});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+app.post('/api/files/mkdir',auth,(req,res)=>{
+  try{
+    const dir=safeHome(req.body?.path||HOME);
+    const dest=path.join(dir,safeName(req.body?.name));
+    if(dest!==safeHome(dest))throw new Error('Invalid destination');
+    if(fs.existsSync(dest))throw new Error('That folder already exists');
+    fs.mkdirSync(dest);
+    res.json({ok:true,path:dest});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+app.post('/api/files/rename',auth,(req,res)=>{
+  try{
+    const p=safeHome(req.body?.path);
+    const dest=path.join(path.dirname(p),safeName(req.body?.newName));
+    if(dest!==safeHome(dest))throw new Error('Invalid name');
+    if(fs.existsSync(dest))throw new Error('A file with that name already exists');
+    fs.renameSync(p,dest);
+    res.json({ok:true,path:dest});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+app.post('/api/files/move',auth,(req,res)=>{
+  try{
+    const p=safeHome(req.body?.path);
+    const destDir=safeHome(req.body?.dest);
+    if(!fs.statSync(destDir).isDirectory())throw new Error('Destination is not a folder');
+    const dest=path.join(destDir,path.basename(p));
+    if(dest!==safeHome(dest))throw new Error('Invalid destination');
+    if(fs.existsSync(dest))throw new Error('A file with that name already exists there');
+    fs.renameSync(p,dest);
+    res.json({ok:true,path:dest});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+app.post('/api/files/delete',auth,(req,res)=>{
+  try{
+    const p=safeHome(req.body?.path);
+    if(p===path.resolve(HOME))throw new Error('Refusing to delete the home directory');
+    fs.rmSync(p,{recursive:true,force:true});
     res.json({ok:true});
   }catch(e){res.status(400).json({error:e.message})}
 });
