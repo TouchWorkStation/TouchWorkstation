@@ -168,7 +168,7 @@ app.post('/api/login',(req,res)=>{
   res.setHeader('Set-Cookie',sessionCookie(token,req));
   res.json({ok:true,mustChangePassword:PW_MUST_CHANGE});
 });
-app.get('/api/me',auth,(req,res)=>res.json({hostname:os.hostname(),user:os.userInfo().username,version:'1.0.0-beta.50',build:BUILD_SHA,startedAt:PROCESS_STARTED_AT,mustChangePassword:PW_MUST_CHANGE}));
+app.get('/api/me',auth,(req,res)=>res.json({hostname:os.hostname(),user:os.userInfo().username,version:'1.0.0-beta.51',build:BUILD_SHA,startedAt:PROCESS_STARTED_AT,mustChangePassword:PW_MUST_CHANGE}));
 
 // Rewrite APP_PASSWORD= (and clear PW_MUST_CHANGE) in the env file in place,
 // preserving every other line, so systemd/postinst keep reading the same
