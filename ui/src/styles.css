@@ -377,6 +377,12 @@
 .ra-loading{display:flex;align-items:center;justify-content:center;gap:10px;color:var(--muted);padding:16px}
 .ra-success{width:60px;height:60px;margin:0 auto 18px;border-radius:50%;background:rgba(78,208,122,.15);display:grid;place-items:center;color:var(--green)}
 .ra-success svg{width:32px;height:32px}
+.ra-https{border:1px solid var(--line);border-radius:12px;padding:13px;margin:14px 0 6px;text-align:left}
+.ra-https.ok{border-color:rgba(101,217,137,.4);background:rgba(101,217,137,.06)}
+.ra-https-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:6px}
+.ra-https-head svg{width:15px}
+.ra-https.ok .ra-https-head{color:#65d989}
+.ra-https .ra-hint{margin-top:8px!important}
 .ra-detail{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:12px;padding:13px;margin-bottom:18px}
 .ra-detail span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint)}
 .ra-detail strong{display:block;font-size:14px;margin-top:5px;word-break:break-all}

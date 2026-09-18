@@ -1091,7 +1091,35 @@ app.get('/api/vpn/status',auth,(req,res)=>{
   const ip=sync('tailscale ip -4 2>/dev/null',SPAWN_ENV);
   let hostname=null,backendState=null;
   try{const j=JSON.parse(sync('tailscale status --json 2>/dev/null',SPAWN_ENV)||'{}');hostname=j.Self?.DNSName?.replace(/\\.$/,'')||null;backendState=j.BackendState||null}catch{}
-  res.json({installed:true,connected:!!ip,ip:ip||null,hostname,backendState,connectionType,viaTailscale:connectionType==='tailscale',secure:req.secure,httpsUrl:hostname?`https://${hostname}`:null});
+  // Whether `tailscale serve` is already fronting the app on HTTPS (:443 → the
+  // local app port), so the UI can skip the "turn on HTTPS" step.
+  const serveStatus=sync('tailscale serve status 2>/dev/null',SPAWN_ENV);
+  const httpsServed=/https:\/\//.test(serveStatus)&&serveStatus.includes(String(PORT));
+  res.json({installed:true,connected:!!ip,ip:ip||null,hostname,backendState,connectionType,viaTailscale:connectionType==='tailscale',secure:req.secure,httpsUrl:hostname?`https://${hostname}`:null,httpsServed});
+});
+// Turn on HTTPS for the Tailscale hostname via `tailscale serve`, which
+// auto-provisions a real cert (needs "HTTPS certificates" enabled in the tailnet
+// admin console) and reverse-proxies :443 straight to the app — bypassing nginx,
+// so the machine is reachable at https://<host>.ts.net instead of the nginx
+// welcome page. Same sudo-or-fallback pattern as /api/vpn/up.
+app.post('/api/vpn/serve',auth,async(req,res)=>{
+  if(!sync('command -v tailscale',SPAWN_ENV))return res.status(400).json({error:'Tailscale is not installed yet.'});
+  let hostname=null;try{hostname=JSON.parse(sync('tailscale status --json 2>/dev/null',SPAWN_ENV)||'{}').Self?.DNSName?.replace(/\\.$/,'')||null}catch{}
+  const httpsUrl=hostname?`https://${hostname}`:null;
+  const cmd=`tailscale serve --bg --https=443 http://127.0.0.1:${PORT}`;
+  try{
+    const {stdout,stderr}=await sh(`sudo -n ${cmd} 2>&1 || ${cmd} 2>&1`,{timeout:30000,env:SPAWN_ENV}).catch(e=>({stdout:e.stdout||'',stderr:e.stderr||e.message||''}));
+    const out=((stdout||'')+(stderr||'')).trim();
+    // Verify by asking serve status rather than trusting exit codes across
+    // tailscale versions.
+    const serveStatus=sync('tailscale serve status 2>/dev/null',SPAWN_ENV);
+    if(/https:\/\//.test(serveStatus)&&serveStatus.includes(String(PORT)))return res.json({ok:true,httpsUrl,httpsServed:true});
+    if(/https|cert|magicdns|admin|not enabled|enable/i.test(out))
+      return res.json({needsAdmin:true,adminUrl:'https://login.tailscale.com/admin/dns',message:'Enable MagicDNS and HTTPS certificates for your tailnet in the Tailscale admin console, then try again.',detail:out.slice(-500)});
+    return res.json({needsTerminal:true,command:`sudo ${cmd}`,message:'Run this once in Terminal to turn on HTTPS (it needs administrator access), then return here.',detail:out.slice(-500)});
+  }catch(e){
+    res.json({needsTerminal:true,command:`sudo ${cmd}`,message:'Run this once in Terminal to turn on HTTPS (it needs administrator access), then return here.'});
+  }
 });
 // Attempt to install Tailscale. Returns installed:true if it worked, or a
 // terminal command for the user to run if we lack passwordless sudo.

@@ -5,7 +5,7 @@
 // terminal command only when passwordless sudo isn't available.
 
 import { useEffect, useState } from 'react';
-import { ShieldCheck, Check, Copy, ExternalLink, Loader, ArrowRight, X } from 'lucide-react';
+import { ShieldCheck, Check, Copy, ExternalLink, Loader, ArrowRight, X, Lock } from 'lucide-react';
 import { api, Button, copyText } from './main.jsx';
 
 export function RemoteAccess({ onClose }) {
@@ -106,10 +106,59 @@ export function RemoteAccess({ onClose }) {
               {status?.hostname && <CopyBox text={status.hostname}/>}
             </>
           )}
+          <HttpsSetup status={status} refresh={refresh}/>
           {status?.ip && <div className="ra-detail"><span>This device</span><strong>{status.hostname || status.ip}</strong></div>}
           <div className="ra-actions"><Button className="primary" onClick={onClose}>Done</Button></div>
         </>}
       </div>
+    </div>
+  );
+}
+
+// HTTPS-over-Tailscale setup, shown once remote access is connected. Turns on
+// `tailscale serve` so https://<host>.ts.net serves the app with a real cert
+// instead of the nginx welcome page.
+function HttpsSetup({ status, refresh }) {
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState(null); // {needsAdmin} | {needsTerminal, command} | {error}
+
+  async function enable() {
+    setBusy(true); setRes(null);
+    try {
+      const r = await api('/vpn/serve', { method: 'POST', body: '{}' });
+      if (r.ok) { await refresh(); }
+      else setRes(r);
+    } catch (e) { setRes({ error: e.message }); }
+    finally { setBusy(false); }
+  }
+
+  if (status?.httpsServed) {
+    return (
+      <div className="ra-https ok">
+        <div className="ra-https-head"><Lock/> Secure HTTPS is on</div>
+        {status.httpsUrl && <a className="btn primary ra-signin" href={status.httpsUrl} target="_blank" rel="noreferrer"><ExternalLink/> Open {status.httpsUrl.replace(/^https:\/\//, '')}</a>}
+        <p className="ra-hint">Use this address for a secure connection — it enables native copy/paste and Face ID / fingerprint unlock.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ra-https">
+      <div className="ra-https-head"><Lock/> Secure HTTPS</div>
+      <p className="ra-hint">Turn on HTTPS so <code>https://{status?.hostname || 'this machine'}</code> loads securely (a padlock, not the server’s default page).</p>
+      {!res && <Button className="primary" onClick={enable} disabled={busy}>{busy ? 'Turning on…' : 'Turn on secure HTTPS'}</Button>}
+      {res?.needsAdmin && <>
+        <div className="notice">{res.message || 'Enable HTTPS certificates for your tailnet first.'}</div>
+        <a className="btn ra-signin" href={res.adminUrl || 'https://login.tailscale.com/admin/dns'} target="_blank" rel="noreferrer"><ExternalLink/> Open Tailscale admin</a>
+        <p className="ra-hint">Enable MagicDNS and HTTPS certificates there, then:</p>
+        <Button className="primary" onClick={enable} disabled={busy}>{busy ? 'Trying…' : 'Try again'}</Button>
+      </>}
+      {res?.needsTerminal && <>
+        <p>{res.message || 'Run this once in Terminal:'}</p>
+        <CopyBox text={res.command}/>
+        <div className="ra-actions"><Button className="primary" onClick={async()=>{setBusy(true);await refresh();setBusy(false);setRes(null);}} disabled={busy}>Check again</Button></div>
+      </>}
+      {res?.error && <div className="notice">{res.error}</div>}
     </div>
   );
 }
