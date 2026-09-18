@@ -9,6 +9,7 @@ import crypto from 'crypto';
 import http from 'http';
 import https from 'https';
 import net from 'net';
+import {generateRegistrationOptions,verifyRegistrationResponse,generateAuthenticationOptions,verifyAuthenticationResponse} from '@simplewebauthn/server';
 import {attachPty} from './pty.js';
 import {mountAppRoutes} from './apps-routes.js';
 import {mountAgentRoutes} from './agents-routes.js';
@@ -144,7 +145,29 @@ function pwEqual(a,b){
 function sessionCookie(token,req){
   return `tw_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`+(req.secure?'; Secure':'');
 }
-app.post('/api/login',(req,res)=>{if(!pwEqual(req.body.password,APP_PASSWORD))return res.status(401).json({error:'Invalid password'});const token=jwt.sign({sub:os.userInfo().username},JWT_SECRET,{expiresIn:'30d'});res.setHeader('Set-Cookie',sessionCookie(token,req));res.json({ok:true,mustChangePassword:PW_MUST_CHANGE})});
+// Brute-force protection for the one unauthenticated endpoint: after a few bad
+// attempts from an IP, lock it out with exponential backoff (30s → capped at
+// 15min). In-memory only — a restart clears it, which is fine for a personal
+// tool. Keyed by req.ip (trust proxy is 'loopback', so the nginx-forwarded IP
+// is used when present).
+const loginFails=new Map(); // ip -> {fails, until}
+function loginLocked(ip){const e=loginFails.get(ip);return e&&e.until>Date.now()?Math.ceil((e.until-Date.now())/1000):0}
+function noteLoginResult(ip,ok){
+  if(ok){loginFails.delete(ip);return}
+  const e=loginFails.get(ip)||{fails:0,until:0};
+  e.fails++;
+  if(e.fails>=5){const backoff=Math.min(15*60*1000,30000*2**(e.fails-5));e.until=Date.now()+backoff}
+  loginFails.set(ip,e);
+}
+app.post('/api/login',(req,res)=>{
+  const wait=loginLocked(req.ip);
+  if(wait)return res.status(429).json({error:`Too many attempts. Try again in ${wait>60?Math.ceil(wait/60)+' min':wait+'s'}.`});
+  if(!pwEqual(req.body.password,APP_PASSWORD)){noteLoginResult(req.ip,false);return res.status(401).json({error:'Invalid password'})}
+  noteLoginResult(req.ip,true);
+  const token=jwt.sign({sub:os.userInfo().username},JWT_SECRET,{expiresIn:'30d'});
+  res.setHeader('Set-Cookie',sessionCookie(token,req));
+  res.json({ok:true,mustChangePassword:PW_MUST_CHANGE});
+});
 app.get('/api/me',auth,(req,res)=>res.json({hostname:os.hostname(),user:os.userInfo().username,version:'1.0.0-beta.49',build:BUILD_SHA,startedAt:PROCESS_STARTED_AT,mustChangePassword:PW_MUST_CHANGE}));
 
 // Rewrite APP_PASSWORD= (and clear PW_MUST_CHANGE) in the env file in place,
@@ -175,6 +198,107 @@ app.post('/api/change-password',auth,(req,res)=>{
   try{persistPassword(np)}catch(e){return res.status(500).json({error:e.message})}
   APP_PASSWORD=np;PW_MUST_CHANGE=false;
   res.json({ok:true});
+});
+
+// ---- Biometric unlock (WebAuthn passkeys) ----------------------------------
+// Lets the phone's Face ID / fingerprint unlock the app instead of typing the
+// password. Requires a secure context (the browser enforces this), so it only
+// works over HTTPS (the built-in 8443 listener via a Tailscale cert, or an
+// HTTPS reverse proxy). The UI hides it otherwise and falls back to password.
+const PASSKEYS_FILE=path.join(STATE_DIR,'passkeys.json');
+function loadPasskeys(){try{return JSON.parse(fs.readFileSync(PASSKEYS_FILE,'utf8'))}catch{return[]}}
+function savePasskeys(list){fs.mkdirSync(path.dirname(PASSKEYS_FILE),{recursive:true});fs.writeFileSync(PASSKEYS_FILE,JSON.stringify(list,null,2),{mode:0o600});try{fs.chmodSync(PASSKEYS_FILE,0o600)}catch{}}
+const b64uToBuf=s=>Buffer.from(String(s),'base64url');
+const bufToB64u=b=>Buffer.from(b).toString('base64url');
+// Origin/RP id come from the browser's own Origin header so verification matches
+// whatever hostname the user actually reached the app on (ts.net, .local, etc).
+function rpInfo(req){
+  let origin=req.headers.origin;
+  if(!origin){const proto=req.secure?'https':'http';origin=`${proto}://${req.headers.host}`}
+  let rpID;try{rpID=new URL(origin).hostname}catch{rpID=os.hostname()}
+  return {origin,rpID};
+}
+// Short-lived challenge store, keyed by a cookie so the register/authenticate
+// two-step survives across the two requests without a logged-in session.
+const waChallenges=new Map(); // id -> {challenge, exp}
+function setChallenge(res,req,challenge){
+  const id=crypto.randomBytes(18).toString('base64url');
+  waChallenges.set(id,{challenge,exp:Date.now()+300000});
+  res.setHeader('Set-Cookie',`tw_wa=${id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=300`+(req.secure?'; Secure':''));
+}
+function takeChallenge(req){
+  const id=parseCookies(req).tw_wa;const e=id&&waChallenges.get(id);
+  if(!e||e.exp<Date.now())return null;
+  waChallenges.delete(id);return e.challenge;
+}
+app.get('/api/webauthn/available',(req,res)=>res.json({hasPasskey:loadPasskeys().length>0}));
+app.post('/api/webauthn/register/options',auth,async(req,res)=>{
+  try{
+    const {rpID}=rpInfo(req);
+    const existing=loadPasskeys();
+    const opts=await generateRegistrationOptions({
+      rpName:'TouchWorkstation',rpID,
+      userName:os.userInfo().username||'user',
+      userID:new Uint8Array(crypto.createHash('sha256').update(os.userInfo().username||'user').digest()),
+      attestationType:'none',
+      excludeCredentials:existing.map(c=>({id:c.id,transports:c.transports})),
+      authenticatorSelection:{residentKey:'preferred',userVerification:'preferred'},
+    });
+    setChallenge(res,req,opts.challenge);
+    res.json(opts);
+  }catch(e){res.status(500).json({error:e.message})}
+});
+app.post('/api/webauthn/register/verify',auth,async(req,res)=>{
+  try{
+    const expectedChallenge=takeChallenge(req);
+    if(!expectedChallenge)throw new Error('Registration expired — try again');
+    const {origin,rpID}=rpInfo(req);
+    const v=await verifyRegistrationResponse({response:req.body?.credential||req.body,expectedChallenge,expectedOrigin:origin,expectedRPID:rpID,requireUserVerification:false});
+    if(!v.verified||!v.registrationInfo)throw new Error('Could not verify this device');
+    const c=v.registrationInfo.credential;
+    const list=loadPasskeys();
+    list.push({id:c.id,publicKey:bufToB64u(c.publicKey),counter:c.counter||0,transports:c.transports||[],label:String(req.body?.label||'').slice(0,60)||'This device',createdAt:new Date().toISOString()});
+    savePasskeys(list);
+    res.json({ok:true});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+app.get('/api/webauthn/credentials',auth,(req,res)=>res.json({credentials:loadPasskeys().map(c=>({id:c.id,label:c.label,createdAt:c.createdAt}))}));
+app.delete('/api/webauthn/credentials/:id',auth,(req,res)=>{
+  const list=loadPasskeys();const next=list.filter(c=>c.id!==req.params.id);
+  if(next.length===list.length)return res.status(404).json({error:'Not found'});
+  savePasskeys(next);res.json({ok:true});
+});
+app.post('/api/webauthn/auth/options',(req,res)=>{
+  try{
+    const list=loadPasskeys();
+    if(!list.length)return res.status(400).json({error:'No passkeys registered'});
+    const {rpID}=rpInfo(req);
+    // generateAuthenticationOptions is sync-return-Promise in v13; await it.
+    generateAuthenticationOptions({rpID,userVerification:'preferred',allowCredentials:list.map(c=>({id:c.id,transports:c.transports}))})
+      .then(opts=>{setChallenge(res,req,opts.challenge);res.json(opts)})
+      .catch(e=>res.status(500).json({error:e.message}));
+  }catch(e){res.status(500).json({error:e.message})}
+});
+app.post('/api/webauthn/auth/verify',async(req,res)=>{
+  try{
+    const wait=loginLocked(req.ip);
+    if(wait)return res.status(429).json({error:`Too many attempts. Try again in ${wait>60?Math.ceil(wait/60)+' min':wait+'s'}.`});
+    const expectedChallenge=takeChallenge(req);
+    if(!expectedChallenge)throw new Error('Sign-in expired — try again');
+    const {origin,rpID}=rpInfo(req);
+    const resp=req.body?.credential||req.body;
+    const list=loadPasskeys();
+    const cred=list.find(c=>c.id===resp.id);
+    if(!cred){noteLoginResult(req.ip,false);throw new Error('Unknown passkey')}
+    const v=await verifyAuthenticationResponse({response:resp,expectedChallenge,expectedOrigin:origin,expectedRPID:rpID,requireUserVerification:false,
+      credential:{id:cred.id,publicKey:new Uint8Array(b64uToBuf(cred.publicKey)),counter:cred.counter,transports:cred.transports}});
+    if(!v.verified){noteLoginResult(req.ip,false);throw new Error('Verification failed')}
+    cred.counter=v.authenticationInfo.newCounter;savePasskeys(list);
+    noteLoginResult(req.ip,true);
+    const token=jwt.sign({sub:os.userInfo().username},JWT_SECRET,{expiresIn:'30d'});
+    res.setHeader('Set-Cookie',sessionCookie(token,req));
+    res.json({ok:true});
+  }catch(e){res.status(400).json({error:e.message})}
 });
 let lastCpuSample=null;
 function cpuSnapshot(){const cpus=os.cpus();let idle=0,total=0;for(const c of cpus){idle+=c.times.idle;for(const t of Object.values(c.times))total+=t}return{idle,total}}

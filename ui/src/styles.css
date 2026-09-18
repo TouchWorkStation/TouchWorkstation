@@ -543,6 +543,22 @@ html[data-theme="solar"] body{background:#1a1206}
 .pw-form{display:flex;flex-direction:column;gap:8px;margin-top:4px}
 .pw-form input{border:1px solid var(--line2);background:rgba(0,0,0,.2);color:#fff;border-radius:9px;padding:10px 11px;font-size:13px}
 .pw-form-actions{display:flex;gap:8px}
+/* Biometric / passkey UI */
+.bio-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%}
+.bio-btn svg{width:16px}
+.auth-or{display:flex;align-items:center;gap:10px;color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin:4px 0}
+.auth-or::before,.auth-or::after{content:'';flex:1;height:1px;background:var(--line)}
+.bio-settings{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.bio-head{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:8px}
+.bio-head svg{width:15px}
+.bio-list{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.bio-item{display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.bio-item>svg{width:15px;color:#65d989;flex:none}
+.bio-item>div{flex:1;min-width:0}
+.bio-item strong,.bio-item small{display:block}
+.bio-item strong{font-size:12px}
+.bio-item small{font-size:10px;color:var(--faint);margin-top:1px}
+.bio-hint{font-size:11px;color:var(--muted);line-height:1.5;margin:4px 0 0}
 .theme-picker{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0 6px}
 .theme-opt{border:1px solid var(--line2);border-radius:14px;background:rgba(255,255,255,.03);padding:10px;cursor:pointer;text-align:center;color:var(--muted);font-size:12px}
 .theme-opt.active{border-color:var(--accent);color:#fff}
