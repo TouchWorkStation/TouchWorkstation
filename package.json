@@ -12,6 +12,8 @@
     "package:deb": "bash scripts/build-deb.sh"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.3",
     "@vitejs/plugin-react": "latest",
     "concurrently": "latest",
     "express": "latest",

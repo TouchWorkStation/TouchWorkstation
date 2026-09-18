@@ -1,5 +1,6 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
+import {startRegistration,startAuthentication} from '@simplewebauthn/browser';
 import {
   Home,Grid3X3,Folder,TerminalSquare,Settings,Bot,Play,Square,RefreshCcw,
   ShieldCheck,Palette,Smartphone,CheckCircle2,Cpu,HardDrive,MemoryStick,Wifi,
@@ -151,7 +152,17 @@ function Empty({children}){return <div className="empty-state">{children}</div>}
 function SectionHead({title,action}){return <div className="section-head"><h2>{title}</h2>{action}</div>}
 
 function Splash(){return <div className="splash"><Mark/><h1>TouchWorkstation</h1><p>Your Linux workstation. In your pocket.</p></div>}
-function Login({onDone}){const[pw,setPw]=useState(''),[err,setErr]=useState(''),[busy,setBusy]=useState(false);async function submit(e){e.preventDefault();setBusy(true);setErr('');try{await api('/login',{method:'POST',body:JSON.stringify({password:pw})});await onDone(pw)}catch(e){setErr(e.message==='AUTH'?'That password did not work.':'Can’t reach TouchWorkstation right now — make sure it’s still running, then try again.')}finally{setBusy(false)}}return <div className="auth-page"><form className="auth-card" onSubmit={submit}><Mark/><span className="kicker">WELCOME BACK</span><h1>Open your workstation.</h1><p>Connect securely to this computer.</p><input autoFocus type="password" placeholder="TouchWorkstation password" value={pw} onChange={e=>setPw(e.target.value)}/><Button className="primary" disabled={busy}>{busy?'Connecting…':'Unlock'}</Button>{err&&<div className="inline-error">{err}</div>}</form></div>}
+// Biometrics need a secure context (HTTPS or localhost) and the WebAuthn API.
+export const biometricSupported=()=>{try{return window.isSecureContext&&!!window.PublicKeyCredential}catch{return false}};
+function Login({onDone}){
+ const[pw,setPw]=useState(''),[err,setErr]=useState(''),[busy,setBusy]=useState(false),[bioReady,setBioReady]=useState(false);
+ useEffect(()=>{if(biometricSupported())api('/webauthn/available').then(r=>setBioReady(!!r.hasPasskey)).catch(()=>{})},[]);
+ async function submit(e){e.preventDefault();setBusy(true);setErr('');try{await api('/login',{method:'POST',body:JSON.stringify({password:pw})});await onDone(pw)}catch(e){setErr(e.message==='AUTH'?'That password did not work.':e.message&&/attempts/.test(e.message)?e.message:'Can’t reach TouchWorkstation right now — make sure it’s still running, then try again.')}finally{setBusy(false)}}
+ async function bio(){setBusy(true);setErr('');try{const opts=await api('/webauthn/auth/options',{method:'POST',body:'{}'});const cred=await startAuthentication({optionsJSON:opts});await api('/webauthn/auth/verify',{method:'POST',body:JSON.stringify(cred)});await onDone()}catch(e){setErr(e.name==='NotAllowedError'?'Biometric sign-in was cancelled.':(e.message||'Biometric sign-in failed.'))}finally{setBusy(false)}}
+ return <div className="auth-page"><form className="auth-card" onSubmit={submit}><Mark/><span className="kicker">WELCOME BACK</span><h1>Open your workstation.</h1><p>Connect securely to this computer.</p>
+  {bioReady&&<><Button type="button" className="primary bio-btn" disabled={busy} onClick={bio}><LockKeyhole/> Unlock with Face ID / fingerprint</Button><div className="auth-or"><span>or password</span></div></>}
+  <input autoFocus={!bioReady} type="password" placeholder="TouchWorkstation password" value={pw} onChange={e=>setPw(e.target.value)}/><Button className={bioReady?'':'primary'} disabled={busy}>{busy?'Connecting…':'Unlock'}</Button>{err&&<div className="inline-error">{err}</div>}</form></div>;
+}
 
 function ChangePassword({currentPassword,onDone}){
  const[cur,setCur]=useState(currentPassword||''),[next,setNext]=useState(''),[confirm,setConfirm]=useState(''),[err,setErr]=useState(''),[busy,setBusy]=useState(false);
@@ -1089,7 +1100,36 @@ function PasswordSetting(){
     <div className="pw-form-actions"><Button className="primary" disabled={busy}>{busy?'Saving…':'Save password'}</Button><Button type="button" onClick={()=>{setOpen(false);setMsg('')}}>Cancel</Button></div>
    </form>}
   {msg&&<div className={ok?'settings-message':'inline-error'}>{msg}</div>}
+  <BiometricSettings/>
  </Setting>;
+}
+// Passkey (Face ID / fingerprint) enrollment + device list. Enrolling needs a
+// secure context, so on plain-HTTP it shows a hint to turn on HTTPS instead.
+function BiometricSettings(){
+ const[list,setList]=useState(null),[msg,setMsg]=useState(''),[ok,setOk]=useState(false),[busy,setBusy]=useState(false);
+ const supported=biometricSupported();
+ function load(){api('/webauthn/credentials').then(r=>setList(r.credentials||[])).catch(()=>setList([]))}
+ useEffect(load,[]);
+ async function enroll(){
+  setMsg('');setOk(false);setBusy(true);
+  try{
+   const label=window.prompt('Name this device (e.g. “My iPhone”):','This device');
+   if(label===null){setBusy(false);return}
+   const opts=await api('/webauthn/register/options',{method:'POST',body:'{}'});
+   const att=await startRegistration({optionsJSON:opts});
+   await api('/webauthn/register/verify',{method:'POST',body:JSON.stringify({credential:att,label})});
+   setOk(true);setMsg('Device added. You can now unlock with biometrics.');load();
+  }catch(e){setMsg(e.name==='NotAllowedError'?'Enrollment was cancelled.':(e.message||'Could not add this device.'))}
+  finally{setBusy(false)}
+ }
+ async function remove(c){if(!window.confirm(`Remove “${c.label}”?`))return;try{await api('/webauthn/credentials/'+encodeURIComponent(c.id),{method:'DELETE'});load()}catch(e){setMsg(e.message)}}
+ return <div className="bio-settings">
+  <div className="bio-head"><LockKeyhole/><span>Biometric unlock</span></div>
+  {list&&list.length>0&&<div className="bio-list">{list.map(c=><div key={c.id} className="bio-item"><CheckCircle2/><div><strong>{c.label}</strong><small>Added {fmtWhen(c.createdAt)}</small></div><button className="ms-mini" onClick={()=>remove(c)}><X/></button></div>)}</div>}
+  {supported?<Button onClick={enroll} disabled={busy}>{busy?'Waiting for device…':(list&&list.length?'Add another device':'Add this device (Face ID / fingerprint)')}</Button>
+   :<p className="bio-hint">Biometric unlock needs HTTPS. Turn on secure remote access (Settings → Connectivity → Access away from home) and open the app over its <code>https://…</code> address, then come back here to add a device.</p>}
+  {msg&&<div className={ok?'settings-message':'inline-error'}>{msg}</div>}
+ </div>;
 }
 function SettingsView({settings,setSettings,go,onMachines}){const[vpn,setVpn]=useState(null),[github,setGithub]=useState(null),[msg,setMsg]=useState(''),[showRA,setShowRA]=useState(false),[showWP,setShowWP]=useState(false),[wpVersion,setWpVersion]=useState(0);const[me]=useLoad(()=>api('/me'),[]);const[status]=usePoll(()=>api('/status'),5000,[]);useEffect(()=>{api('/vpn/status').then(setVpn);api('/github/status').then(setGithub)},[]);
  const localUrl=me?.hostname?`http://${me.hostname}.local:8088`:null;
