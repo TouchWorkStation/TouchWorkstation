@@ -35,9 +35,26 @@ show_url() {
   fi
 }
 
+# A service being "active" doesn't mean its port serves (e.g. nginx up but its
+# :8088 block never loaded). Probe both; any HTTP code but 000 = serving.
+_http_code() { command -v curl >/dev/null 2>&1 || { echo 000; return; }; curl -s -o /dev/null -m 3 -w '%{http_code}' "$1" 2>/dev/null || true; }
+_serving() { [ "$(_http_code "$1")" != "000" ] && echo serving || echo "NOT serving"; }
 cmd_status() {
-  printf '%-18s %s\n' 'Web application' "$(systemctl is-active touchworkstation 2>/dev/null || echo unknown)"
-  printf '%-18s %s\n' 'nginx' "$(systemctl is-active nginx 2>/dev/null || echo unknown)"
+  local web nginx app proxy
+  web="$(systemctl is-active touchworkstation 2>/dev/null || echo unknown)"
+  nginx="$(systemctl is-active nginx 2>/dev/null || echo unknown)"
+  app="$(_serving http://127.0.0.1:8787/api/me)"
+  proxy="$(_serving http://127.0.0.1:8088/)"
+  printf '%-18s %s\n' 'Web application' "$web  ($app on :8787)"
+  printf '%-18s %s\n' 'nginx' "$nginx  ($proxy on :8088)"
+  if [ "$nginx" = active ] && [ "$proxy" = "NOT serving" ]; then
+    echo
+    echo "PROBLEM: nginx is running but nothing serves :8088."
+    grep -Eq '^[[:space:]]*include[[:space:]]+.*conf\.d/\*\.conf;' /etc/nginx/nginx.conf 2>/dev/null \
+      || echo "  Cause: /etc/nginx/nginx.conf isn't including /etc/nginx/conf.d/*.conf — run: sudo touchworkstation restart"
+    [ "$app" = serving ] && echo "  App is reachable directly at http://$(lan_ip):8787 meanwhile."
+  fi
+  [ "$app" = "NOT serving" ] && { echo; echo "PROBLEM: app not responding on :8787 — run: touchworkstation logs"; }
   echo
   show_url
 }

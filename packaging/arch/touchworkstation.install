@@ -1,3 +1,37 @@
+# Arch's stock /etc/nginx/nginx.conf does NOT `include /etc/nginx/conf.d/*.conf;`
+# (unlike Debian/Fedora), so the reverse-proxy drop-in this package installs at
+# /etc/nginx/conf.d/touchworkstation.conf is silently ignored — nginx runs but
+# nothing listens on :8088, and the app looks "active but unreachable". Ensure
+# the include exists (idempotent), so the :8088 proxy actually loads.
+ensure_nginx_confd_include() {
+  NGINX_CONF=/etc/nginx/nginx.conf
+  [ -f "$NGINX_CONF" ] || return 0
+  # Already including conf.d (uncommented) anywhere? Nothing to do.
+  if grep -Eq '^[[:space:]]*include[[:space:]]+.*conf\.d/\*\.conf;' "$NGINX_CONF"; then
+    return 0
+  fi
+  cp -a "$NGINX_CONF" "${NGINX_CONF}.touchworkstation.bak" 2>/dev/null || true
+  if grep -Eq '^[[:space:]]*#[[:space:]]*include[[:space:]]+.*conf\.d/\*\.conf;' "$NGINX_CONF"; then
+    # Uncomment an existing commented-out include.
+    sed -i -E '0,/^[[:space:]]*#[[:space:]]*(include[[:space:]]+.*conf\.d\/\*\.conf;)/s//    \1/' "$NGINX_CONF"
+  else
+    # Insert the include right after the first `http {`.
+    sed -i '0,/^[[:space:]]*http[[:space:]]*{/s//&\n    include \/etc\/nginx\/conf.d\/*.conf; # added by touchworkstation/' "$NGINX_CONF"
+  fi
+  echo "==> Enabled /etc/nginx/conf.d/*.conf in nginx.conf (needed for the :8088 proxy)."
+}
+# Enable + (re)start nginx with a config check. Uses restart, not reload, since
+# we may have just changed the top-level nginx.conf (a reload can miss that).
+start_nginx() {
+  systemctl enable nginx 2>/dev/null || true
+  if nginx -t 2>/dev/null; then
+    systemctl restart nginx 2>/dev/null || systemctl start nginx 2>/dev/null || true
+  else
+    echo "WARNING: nginx -t failed; not restarting nginx. Check /etc/nginx/nginx.conf (a backup is at /etc/nginx/nginx.conf.touchworkstation.bak)." >&2
+    systemctl start nginx 2>/dev/null || true
+  fi
+}
+
 post_install() {
   APP=/opt/touchworkstation/app
   ENV_DIR=/etc/touchworkstation
@@ -44,9 +78,8 @@ ENV
   # present; enable+start both, and validate the config before (re)loading it.
   systemctl daemon-reload 2>/dev/null || true
   systemctl enable --now touchworkstation 2>/dev/null || true
-  systemctl enable nginx 2>/dev/null || true
-  if nginx -t 2>/dev/null; then systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true
-  else systemctl start nginx 2>/dev/null || true; fi
+  ensure_nginx_confd_include
+  start_nginx
 
   echo
   echo "============================================================"
@@ -100,10 +133,10 @@ post_upgrade() {
   fi
   # Make sure the :8088 proxy is up too — earlier packages never enabled or
   # started nginx on upgrade, so it could sit inactive (reported: nginx
-  # inactive, app not reachable on 8088). Enable it and reload the config.
-  systemctl enable nginx 2>/dev/null || true
-  if nginx -t 2>/dev/null; then systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true
-  else systemctl start nginx 2>/dev/null || true; fi
+  # inactive, app not reachable on 8088). Also repair the conf.d include for
+  # machines installed before this fix existed.
+  ensure_nginx_confd_include
+  start_nginx
   echo "==> Updated and restarted (app + nginx)."
 }
 
