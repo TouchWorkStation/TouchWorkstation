@@ -1,13 +1,54 @@
 #!/usr/bin/env bash
 set -u
+# A service being "active" does NOT mean its port is actually serving — a
+# classic failure is nginx running but its :8088 server block never loading
+# (e.g. Arch's nginx.conf not including conf.d). So probe the ports too.
 WEB=$(systemctl is-active touchworkstation 2>/dev/null || true)
 NGINX=$(systemctl is-active nginx 2>/dev/null || true)
-printf '%-20s %s\n' 'Web application' "$WEB"
-printf '%-20s %s\n' 'nginx' "$NGINX"
+
+# HTTP status code, or 000 if the connection failed. Any real code (incl. 401
+# from /api/me when not signed in) means the port is serving.
+# curl writes the %{http_code} template even on failure (000 on a refused
+# connection), so rely on that single value; `|| true` just swallows curl's
+# nonzero exit. Any code other than 000 means the port answered.
+http_code(){ command -v curl >/dev/null 2>&1 || { echo 000; return; }; curl -s -o /dev/null -m 3 -w '%{http_code}' "$1" 2>/dev/null || true; }
+serving(){ [ "$(http_code "$1")" != "000" ] && echo "serving" || echo "NOT serving"; }
+
+APP=$(serving http://127.0.0.1:8787/api/me)
+PROXY=$(serving http://127.0.0.1:8088/)
+
+printf '%-20s %s\n' 'Web application' "$WEB${APP:+  ($APP on :8787)}"
+printf '%-20s %s\n' 'nginx' "$NGINX${PROXY:+  ($PROXY on :8088)}"
+
 HOST=$(hostname)
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 [ -n "$IP" ] || IP=$(ip -4 route get 1 2>/dev/null | sed -n 's/.*src \([0-9.]*\).*/\1/p' | head -1)
 [ -n "$IP" ] || IP=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)
+
+# nginx up but :8088 dead is almost always the conf.d include missing.
+if [ "$NGINX" = active ] && [ "$PROXY" = "NOT serving" ]; then
+  echo
+  echo "PROBLEM: nginx is running but nothing is serving on :8088."
+  if ! grep -Eq '^[[:space:]]*include[[:space:]]+.*conf\.d/\*\.conf;' /etc/nginx/nginx.conf 2>/dev/null; then
+    echo "  Cause: /etc/nginx/nginx.conf does not include /etc/nginx/conf.d/*.conf,"
+    echo "         so the TouchWorkstation proxy config is never loaded."
+    echo "  Fix:   sudo touchworkstation-restart   (reinstall/upgrade also repairs this)"
+  fi
+  [ "$APP" = serving ] && echo "  For now the app is reachable directly at http://${IP:-<ip>}:8787"
+fi
+if [ "$APP" = "NOT serving" ]; then
+  echo
+  echo "PROBLEM: the app isn't responding on :8787 — check: journalctl -u touchworkstation -e"
+fi
+# A firewall can make both ports 'serving' locally yet unreachable from a phone.
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi '^Status: active'; then
+  echo
+  echo "NOTE: ufw firewall is active — allow the ports: sudo ufw allow 8088/tcp && sudo ufw allow 8787/tcp"
+elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null | grep -q running; then
+  echo
+  echo "NOTE: firewalld is active — allow the ports: sudo firewall-cmd --add-port=8088/tcp --add-port=8787/tcp --permanent && sudo firewall-cmd --reload"
+fi
+
 echo
-echo "Open: http://${HOST}.local:8088"
-[ -n "$IP" ] && echo "Fallback: http://${IP}:8088   (IP ${IP}, port 8088)"
+echo "Open:     http://${HOST}.local:8088"
+[ -n "$IP" ] && echo "Fallback: http://${IP}:8088   (or directly http://${IP}:8787)"
