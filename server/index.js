@@ -1121,17 +1121,33 @@ app.post('/api/vpn/serve',auth,async(req,res)=>{
     res.json({needsTerminal:true,command:`sudo ${cmd}`,message:'Run this once in Terminal to turn on HTTPS (it needs administrator access), then return here.'});
   }
 });
-// Attempt to install Tailscale. Returns installed:true if it worked, or a
-// terminal command for the user to run if we lack passwordless sudo.
+// Attempt to install Tailscale. Distro-aware: on Arch, `tailscale` is a real
+// package (and now a dependency), so use pacman; elsewhere use Tailscale's own
+// installer. Returns installed:true if it worked, or the correct per-distro
+// terminal command when we lack passwordless sudo.
 app.post('/api/vpn/install',auth,async(req,res)=>{
-  if(sync('command -v tailscale',SPAWN_ENV))return res.json({installed:true,message:'Tailscale is already installed.'});
+  if(sync('command -v tailscale',SPAWN_ENV)){
+    // Present but its daemon may be down (nothing enabled it) — try, best-effort.
+    await sh('sudo -n systemctl enable --now tailscaled 2>/dev/null || true',{timeout:15000,env:SPAWN_ENV}).catch(()=>{});
+    return res.json({installed:true,message:'Tailscale is already installed.'});
+  }
+  const pacman=!!sync('command -v pacman',SPAWN_ENV);
+  const apt=!!sync('command -v apt-get',SPAWN_ENV);
+  const dnf=!!sync('command -v dnf',SPAWN_ENV);
+  const autoCmd=pacman?'pacman -Sy --noconfirm tailscale':'sh -c "curl -fsSL https://tailscale.com/install.sh | sh"';
+  const termCmd=pacman?'sudo pacman -S tailscale && sudo systemctl enable --now tailscaled'
+    :apt||dnf?'curl -fsSL https://tailscale.com/install.sh | sh'
+    :'curl -fsSL https://tailscale.com/install.sh | sh';
   try{
-    await sh('sudo -n sh -c "curl -fsSL https://tailscale.com/install.sh | sh"',{timeout:10*60*1000,env:SPAWN_ENV});
-    if(sync('command -v tailscale',SPAWN_ENV))return res.json({installed:true,message:'Tailscale installed.'});
+    await sh(`sudo -n ${autoCmd}`,{timeout:10*60*1000,env:SPAWN_ENV});
+    if(sync('command -v tailscale',SPAWN_ENV)){
+      await sh('sudo -n systemctl enable --now tailscaled 2>/dev/null || true',{timeout:15000,env:SPAWN_ENV}).catch(()=>{});
+      return res.json({installed:true,message:'Tailscale installed.'});
+    }
     throw new Error('not installed after attempt');
   }catch{
-    // No passwordless sudo — hand the user a one-line command to run in Terminal.
-    res.json({installed:false,needsTerminal:true,command:'curl -fsSL https://tailscale.com/install.sh | sh',message:'TouchWorkstation needs one command in Terminal to install Tailscale (it requires administrator access).'});
+    // No passwordless sudo — hand the user the right command for their distro.
+    res.json({installed:false,needsTerminal:true,command:termCmd,message:'TouchWorkstation needs one command in Terminal to install Tailscale (it requires administrator access).'});
   }
 });
 // Bring Tailscale up and capture the sign-in URL so the user can authenticate
@@ -1139,6 +1155,9 @@ app.post('/api/vpn/install',auth,async(req,res)=>{
 app.post('/api/vpn/up',auth,async(req,res)=>{
   if(!sync('command -v tailscale',SPAWN_ENV))return res.status(400).json({error:'Tailscale is not installed yet.'});
   if(sync('tailscale ip -4 2>/dev/null',SPAWN_ENV))return res.json({connected:true,message:'Remote access is already connected.'});
+  // `tailscale up` fails if tailscaled isn't running ("failed to connect to
+  // local tailscaled") — make sure the daemon is up first (best-effort).
+  await sh('sudo -n systemctl enable --now tailscaled 2>/dev/null || true',{timeout:15000,env:SPAWN_ENV}).catch(()=>{});
   try{
     // tailscale up prints the auth URL to stderr; run non-interactively and capture it.
     const {stdout,stderr}=await sh('sudo -n tailscale up --timeout=5s 2>&1 || tailscale up --timeout=5s 2>&1',{timeout:20000,env:SPAWN_ENV}).catch(e=>({stdout:e.stdout||'',stderr:e.stderr||e.message||''}));

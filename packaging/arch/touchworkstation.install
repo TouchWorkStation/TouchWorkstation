@@ -80,6 +80,9 @@ ENV
   systemctl enable --now touchworkstation 2>/dev/null || true
   ensure_nginx_confd_include
   start_nginx
+  # Tailscale is a dependency now; bring its daemon up so the in-app "remote
+  # access" flow only has to run `tailscale up` (sign in), not install/enable it.
+  systemctl enable --now tailscaled 2>/dev/null || true
 
   echo
   echo "============================================================"
@@ -137,6 +140,7 @@ post_upgrade() {
   # machines installed before this fix existed.
   ensure_nginx_confd_include
   start_nginx
+  systemctl enable --now tailscaled 2>/dev/null || true
   echo "==> Updated and restarted (app + nginx)."
 }
 
