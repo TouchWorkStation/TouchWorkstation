@@ -43,7 +43,7 @@ fi
 # A firewall can make both ports 'serving' locally yet unreachable from a phone.
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi '^Status: active'; then
   echo
-  echo "NOTE: ufw firewall is active — allow the ports: sudo ufw allow 8088/tcp && sudo ufw allow 8787/tcp"
+  echo "NOTE: ufw firewall is active — allow the ports: sudo ufw allow 80/tcp && sudo ufw allow 8088/tcp && sudo ufw allow 8787/tcp && sudo ufw allow in on tailscale0 && sudo ufw reload"
 elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null | grep -q running; then
   echo
   echo "NOTE: firewalld is active — allow the ports: sudo firewall-cmd --add-port=8088/tcp --add-port=8787/tcp --permanent && sudo firewall-cmd --reload"

@@ -20,6 +20,26 @@ ensure_nginx_confd_include() {
   fi
   echo "==> Enabled /etc/nginx/conf.d/*.conf in nginx.conf (needed for the :8088 proxy)."
 }
+# If a firewall is active, allow the app's ports and trust the Tailscale
+# interface. Without this the app serves fine on the host but is unreachable
+# from any other device — LAN AND Tailscale alike — because the default INPUT
+# policy drops inbound (reported on Omarchy, which ships ufw active). Only opens
+# an already-active firewall; never installs or enables one.
+open_firewall() {
+  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi '^Status: active'; then
+    ufw allow 80/tcp   >/dev/null 2>&1 || true
+    ufw allow 8088/tcp >/dev/null 2>&1 || true
+    ufw allow 8787/tcp >/dev/null 2>&1 || true
+    ufw allow in on tailscale0 >/dev/null 2>&1 || true
+    ufw reload >/dev/null 2>&1 || true
+    echo "==> Opened ufw for ports 80/8088/8787 and the Tailscale interface."
+  elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null | grep -q running; then
+    for p in 80 8088 8787; do firewall-cmd --permanent --add-port="${p}/tcp" >/dev/null 2>&1 || true; done
+    firewall-cmd --permanent --zone=trusted --add-interface=tailscale0 >/dev/null 2>&1 || true
+    firewall-cmd --reload >/dev/null 2>&1 || true
+    echo "==> Opened firewalld for ports 80/8088/8787 and the Tailscale interface."
+  fi
+}
 # Enable + (re)start nginx with a config check. Uses restart, not reload, since
 # we may have just changed the top-level nginx.conf (a reload can miss that).
 start_nginx() {
@@ -83,6 +103,7 @@ ENV
   # Tailscale is a dependency now; bring its daemon up so the in-app "remote
   # access" flow only has to run `tailscale up` (sign in), not install/enable it.
   systemctl enable --now tailscaled 2>/dev/null || true
+  open_firewall
 
   echo
   echo "============================================================"
@@ -141,6 +162,7 @@ post_upgrade() {
   ensure_nginx_confd_include
   start_nginx
   systemctl enable --now tailscaled 2>/dev/null || true
+  open_firewall
   echo "==> Updated and restarted (app + nginx)."
 }
 
