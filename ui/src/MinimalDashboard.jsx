@@ -12,7 +12,7 @@
 // wallpaper-default.jpg shipped here) without touching any code.
 
 import { useEffect, useState } from 'react';
-import { Cpu, MemoryStick, HardDrive, Upload, Download, TerminalSquare, Code2, Folder, GitBranch, Box, Sparkles, Settings, ClipboardList, Keyboard } from 'lucide-react';
+import { Cpu, MemoryStick, HardDrive, Upload, Download, TerminalSquare, Code2, Folder, GitBranch, Box, Sparkles, Settings, ClipboardList, Keyboard, Globe2 } from 'lucide-react';
 import { api, usePoll } from './main.jsx';
 
 // Exported so main.jsx's mobile nav sheet (opened from the top-left
@@ -24,6 +24,7 @@ export const NAV = [
   { id: 'projects', label: 'Projects', icon: Code2 },
   { id: 'files', label: 'Files', icon: Folder },
   { id: 'disks', label: 'Disks', icon: HardDrive },
+  { id: 'network', label: 'Network & VPN', icon: Globe2 },
   { id: 'projects', label: 'GitHub', icon: GitBranch },
   { id: 'docker', label: 'Containers', icon: Box },
   { id: 'agents', label: 'Agents', icon: Sparkles },
