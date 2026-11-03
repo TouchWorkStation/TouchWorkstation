@@ -21,6 +21,7 @@ import { RemoteAccess } from './RemoteAccess.jsx';
 import { WallpaperPicker } from './WallpaperPicker.jsx';
 import { DockerView } from './DockerView.jsx';
 import { Disks } from './Disks.jsx';
+import { Network as NetworkView } from './Network.jsx';
 import { ClipboardScreen } from './ClipboardScreen.jsx';
 import { ShortcutTrainer } from './ShortcutTrainer.jsx';
 import TiledDashboard, { TILED_PANES, DEFAULT_TILED_PANES } from './TiledDashboard.jsx';
@@ -213,7 +214,7 @@ function Choice({active,title,sub,onClick=()=>{},icon:Icon}){return <button clas
 function Ready({text}){return <div><CheckCircle2/><span>{text}</span></div>}
 
 const NAV=[
- ['home',Home,'Home'],['projects',Code2,'Projects'],['agents',Bot,'Agents'],['apps',Grid3X3,'Apps'],['files',Folder,'Files'],['disks',HardDrive,'Disks'],['terminal',TerminalSquare,'Terminal'],['clipboard',ClipboardList,'Clipboard'],['settings',Settings,'Settings']
+ ['home',Home,'Home'],['projects',Code2,'Projects'],['agents',Bot,'Agents'],['apps',Grid3X3,'Apps'],['files',Folder,'Files'],['disks',HardDrive,'Disks'],['network',Network,'Network'],['terminal',TerminalSquare,'Terminal'],['clipboard',ClipboardList,'Clipboard'],['settings',Settings,'Settings']
 ];
 
 function Shell({me,settings,setSettings,omarchy}){
@@ -371,6 +372,7 @@ function Router(p){
    case'preview-full':return <PreviewFullscreen nav={p.navState} go={p.go}/>;
    case'docker':return <DockerView go={p.go}/>;
    case'disks':return <Disks/>;
+   case'network':return <NetworkView/>;
    case'clipboard':return <ClipboardScreen/>;
    case'shortcuts':return <ShortcutTrainer/>;
    case'files':return <Files/>;

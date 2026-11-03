@@ -19,7 +19,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Cpu, Upload, Download, Folder, FileText, Save, TerminalSquare, ChevronUp,
   Code2, GitBranch, Box, Sparkles, ClipboardList, Keyboard, Settings as SettingsIcon,
-  Bot, House, Grid3X3, CloudRain, HardDrive,
+  Bot, House, Grid3X3, CloudRain, HardDrive, Globe2,
 } from 'lucide-react';
 import { api, usePoll, uploadFile } from './main.jsx';
 
@@ -33,6 +33,7 @@ const NAV_TARGETS = [
   { id: 'projects', label: 'Projects', icon: Code2 },
   { id: 'files', label: 'Files', icon: Folder },
   { id: 'disks', label: 'Disks', icon: HardDrive },
+  { id: 'network', label: 'Network & VPN', icon: Globe2 },
   { id: 'projects', label: 'GitHub', icon: GitBranch },
   { id: 'docker', label: 'Containers', icon: Box },
   { id: 'agents', label: 'Agents', icon: Sparkles },
