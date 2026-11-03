@@ -626,6 +626,25 @@ app.get('/api/processes',auth,async(req,res)=>{
 
 app.post('/api/terminal/exec',auth,async(req,res)=>{const command=String(req.body.command||'').trim();if(!command)return res.json({output:''});try{const {stdout,stderr}=await sh(command,{cwd:HOME,timeout:30000,maxBuffer:2_000_000,shell:'/bin/bash'});res.json({output:(stdout||'')+(stderr||'')})}catch(e){res.status(400).json({error:(e.stdout||'')+(e.stderr||e.message)})}});
 
+// All block devices (physical disks + partitions), with per-mount usage — for
+// the Disks screen on a workstation with several drives. lsblk gives the
+// device tree; df fills in used/free per mountpoint (robust across util-linux
+// versions that lack lsblk's FSUSED columns).
+app.get('/api/disks',auth,(req,res)=>{
+  let disks=[];
+  try{disks=JSON.parse(sync('lsblk -J -b -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINT,LABEL,MODEL,VENDOR,RM,RO 2>/dev/null',SPAWN_ENV)||'{}').blockdevices||[]}catch{}
+  const usage={};
+  try{
+    for(const line of sync('df -P -B1 2>/dev/null',SPAWN_ENV).split('\n').slice(1)){
+      const m=line.trim().match(/^(.+?)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)%\s+(\/.*)$/);
+      if(m)usage[m[6]]={size:Number(m[2]),used:Number(m[3]),avail:Number(m[4]),usePct:Number(m[5])};
+    }
+  }catch{}
+  const annotate=n=>{if(n.mountpoint&&usage[n.mountpoint])n.usage=usage[n.mountpoint];(n.children||[]).forEach(annotate)};
+  disks.forEach(annotate);
+  res.json({disks});
+});
+
 const projectRoots=()=>[PROJECTS_DEFAULT,path.join(HOME,'Projects'),path.join(HOME,'Developer'),path.join(HOME,'Code'),path.join(HOME,'src')].filter((x,i,a)=>a.indexOf(x)===i&&fs.existsSync(x));
 function sync(cmd,env){try{return execSync(cmd,{encoding:'utf8',stdio:['ignore','pipe','ignore'],shell:'/bin/bash',env:env||process.env}).trim()}catch{return''}}
 function detectProject(dir){let stack='Project',runCommand='',port=null,installCommand='';const pkgPath=path.join(dir,'package.json');if(fs.existsSync(pkgPath)){try{const p=JSON.parse(fs.readFileSync(pkgPath,'utf8'));const deps={...(p.dependencies||{}),...(p.devDependencies||{})};if(deps.vite){stack='Vite';port=5173}else if(deps.next){stack='Next.js';port=3000}else if(deps.react){stack='React';port=3000}else if(deps.vue){stack='Vue';port=5173}else if(deps['@angular/core']){stack='Angular';port=4200}else{stack='Node.js';port=3000}if(p.scripts?.dev)runCommand='npm run dev';else if(p.scripts?.start)runCommand='npm start';

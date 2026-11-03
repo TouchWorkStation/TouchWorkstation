@@ -23,6 +23,7 @@ export const NAV = [
   { id: 'terminal', label: 'Terminal', icon: TerminalSquare },
   { id: 'projects', label: 'Projects', icon: Code2 },
   { id: 'files', label: 'Files', icon: Folder },
+  { id: 'disks', label: 'Disks', icon: HardDrive },
   { id: 'projects', label: 'GitHub', icon: GitBranch },
   { id: 'docker', label: 'Containers', icon: Box },
   { id: 'agents', label: 'Agents', icon: Sparkles },
