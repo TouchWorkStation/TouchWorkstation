@@ -129,6 +129,30 @@
 .fp-actions .btn.danger,.btn.danger{color:#f7768e;border-color:rgba(247,118,142,.3)}
 .fp-picker .fp-picker-list{max-height:50dvh;overflow:auto;display:grid;gap:5px;padding:0 14px 4px}
 .fp-picker .file-toolbar{padding:10px 14px 0}
+/* --- Disks / storage view ------------------------------------------------- */
+.disk-list{display:grid;gap:12px;grid-template-columns:minmax(0,1fr)}
+@media(min-width:821px){.disk-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.disk-card{border:1px solid var(--line);border-radius:16px;background:rgba(21,18,24,.7);overflow:hidden}
+.disk-card-head{display:flex;align-items:center;gap:11px;padding:13px 15px;border-bottom:1px solid var(--line)}
+.disk-card-head>svg{width:20px;color:var(--accent);flex:none}
+.disk-card-head strong,.disk-card-head small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.disk-card-head strong{font-size:13px}
+.disk-card-head small{font-size:10px;color:var(--muted);margin-top:2px}
+.disk-vols{padding:6px 15px 14px;display:flex;flex-direction:column;gap:12px}
+.disk-vol{padding-top:10px;border-top:1px solid var(--line)}
+.disk-vol:first-child{border-top:0}
+.disk-vol-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.disk-vol-head strong{font-size:12.5px}
+.disk-tag{font-size:9px;color:var(--muted);border:1px solid var(--line2);border-radius:999px;padding:1px 7px}
+.disk-label{font-size:10px;color:var(--accent)}
+.disk-vol-head .disk-size{margin-left:auto;font-size:11px;color:var(--text);font-variant-numeric:tabular-nums}
+.disk-mount{margin:5px 0 7px}
+.disk-mount code{font-size:11px;color:#c8b6f7;word-break:break-all}
+.disk-unmounted{font-size:10px;color:var(--faint)}
+.disk-bar{height:7px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+.disk-bar i{display:block;height:100%;border-radius:999px;transition:width .5s ease}
+.disk-usage{display:flex;justify-content:space-between;gap:8px;font-size:10px;color:var(--muted);margin-top:4px;font-variant-numeric:tabular-nums}
+.disk-usage span:last-child{color:var(--text)}
 .file-row strong,.file-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.file-row strong{font-size:12px}.file-row small{font-size:9px;color:#77707a;margin-top:3px}.file-icon{width:38px;height:38px;border-radius:10px;background:rgba(141,81,214,.08);display:grid;place-items:center;color:#a97ce2}.file-icon.folder{color:#e7a54f;background:rgba(231,165,79,.08)}.file-row>svg:last-child{color:#5f5962}.terminal-page{padding:20px;max-width:1200px;margin:auto}.terminal-window{border:1px solid var(--line);border-radius:15px;background:#070708;overflow:hidden;box-shadow:var(--shadow);position:relative}.terminal-chrome{height:48px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 13px}.terminal-chrome>div{display:flex;gap:6px}.terminal-chrome>div i{width:9px;height:9px;border-radius:50%;background:#ef5c5c}.terminal-chrome>div i:nth-child(2){background:#e6b84a}.terminal-chrome>div i:nth-child(3){background:#4eba65}.terminal-chrome>span{margin:auto;color:#716b74;font-size:10px}
 .terminal-chrome-right{display:flex;align-items:center;gap:8px}.terminal-output{height:58vh;min-height:420px;overflow:auto;padding:16px;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c6c1c8}.terminal-output pre{white-space:pre-wrap;margin:5px 0 14px;font:inherit}.terminal-output pre.error{color:#ff8d98}.terminal-command{color:#f4eee8}.terminal-command b{color:#ea6c42}.terminal-compose{height:52px;border-top:1px solid var(--line);display:flex;align-items:center;gap:9px;padding:0 12px}.terminal-compose>span{color:var(--accent);font-weight:800}.terminal-compose input{flex:1;border:0;background:transparent;color:#fff;font-family:ui-monospace,monospace;font-size:13px}.terminal-compose .btn{width:38px;padding:0}.quick-commands{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}.quick-commands button{border:1px solid var(--line);background:rgba(255,255,255,.025);color:#817a85;border-radius:999px;padding:7px 10px;font-size:10px}
 .settings{max-width:900px}.setting-row{display:flex;gap:15px;padding:18px 0;border-bottom:1px solid var(--line)}.setting-icon{width:44px;height:44px;border-radius:13px;background:rgba(233,84,32,.08);display:grid;place-items:center;color:#ed7950;flex:none}.setting-copy{flex:1;min-width:0}.setting-title{display:flex;align-items:center;justify-content:space-between;gap:10px}.setting-title h3{font-size:14px;margin:0}.setting-title span{font-size:10px;color:#df9b83}.setting-copy p{font-size:12px;color:#847d88;line-height:1.5;margin:6px 0 11px;max-width:680px}.setting-actions{display:flex;gap:7px;flex-wrap:wrap}.setting-theme{display:flex;gap:8px}.setting-theme button{border:1px solid var(--line);border-radius:11px;background:transparent;color:#aaa3ad;padding:7px;min-width:90px}.setting-theme button.selected{border-color:var(--accent);color:#fff}.theme-box{display:block;height:34px;border-radius:7px;margin-bottom:5px}.theme-box.ubuntu{background:linear-gradient(145deg,#53163e,#1a0b17 65%,#e95420)}.theme-box.clean{background:linear-gradient(145deg,#26303d,#101217)}.setting-theme small{display:block;color:#635d66}.settings-message{position:sticky;bottom:16px;padding:12px 14px;background:#211720;border:1px solid rgba(233,84,32,.2);border-radius:12px;display:flex;align-items:flex-start;gap:9px;color:#d2c8d1;font-size:11px;box-shadow:var(--shadow)}.settings-message svg{color:var(--accent);flex:none}
