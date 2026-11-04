@@ -94,10 +94,8 @@ package() {
     install -Dm755 "$srcdir/$bin" "$pkgdir/usr/bin/$bin"
   done
 
-  # /usr/local/bin, not /usr/bin: this shadows the real xdg-open (from
-  # xdg-utils) system-wide via normal PATH precedence, without owning the
-  # same file path as that package — installing it at /usr/bin/xdg-open
-  # would conflict with xdg-utils outright. See packaging/bin/xdg-open for
-  # why this exists at all.
-  install -Dm755 "$srcdir/xdg-open" "$pkgdir/usr/local/bin/xdg-open"
+  # PRIVATE dir, NOT /usr/local/bin: the app puts this dir first on PATH only
+  # for the processes it spawns, so it never shadows the system xdg-open for
+  # the real desktop. See packaging/bin/xdg-open for why this exists.
+  install -Dm755 "$srcdir/xdg-open" "$pkgdir/opt/touchworkstation/bin/xdg-open"
 }

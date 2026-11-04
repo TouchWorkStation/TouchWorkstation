@@ -61,9 +61,9 @@ jobs:
             cp "$f" "$DEB_ROOT/usr/bin/"
           done
           chmod +x "$DEB_ROOT"/usr/bin/*
-          mkdir -p "$DEB_ROOT/usr/local/bin"
-          cp packaging/bin/xdg-open "$DEB_ROOT/usr/local/bin/xdg-open"
-          chmod +x "$DEB_ROOT/usr/local/bin/xdg-open"
+          mkdir -p "$DEB_ROOT/opt/touchworkstation/bin"
+          cp packaging/bin/xdg-open "$DEB_ROOT/opt/touchworkstation/bin/xdg-open"
+          chmod +x "$DEB_ROOT/opt/touchworkstation/bin/xdg-open"
           cp packaging/debian/control packaging/debian/postinst packaging/debian/prerm "$DEB_ROOT/DEBIAN/"
           DEB_VERSION="${GITHUB_REF_NAME#v}"
           sed -i "s/^Version: .*/Version: $DEB_VERSION/" "$DEB_ROOT/DEBIAN/control"
@@ -77,7 +77,7 @@ jobs:
           RPMBUILD_DIR="$RUNNER_TEMP/rpmbuild"
           mkdir -p "$RPMBUILD_DIR"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
           RPM_PAYLOAD="$RUNNER_TEMP/rpm-payload/touchworkstation-$RPM_VERSION"
-          mkdir -p "$RPM_PAYLOAD/opt/touchworkstation" "$RPM_PAYLOAD/usr/bin" "$RPM_PAYLOAD/usr/local/bin" "$RPM_PAYLOAD/etc/avahi/services"
+          mkdir -p "$RPM_PAYLOAD/opt/touchworkstation" "$RPM_PAYLOAD/opt/touchworkstation/bin" "$RPM_PAYLOAD/usr/bin" "$RPM_PAYLOAD/etc/avahi/services"
           cp -a "$RUNNER_TEMP/deb-root/opt/touchworkstation/app" "$RPM_PAYLOAD/opt/touchworkstation/"
           cp -a "$RUNNER_TEMP/deb-root/opt/touchworkstation/runtime" "$RPM_PAYLOAD/opt/touchworkstation/"
           cp packaging/touchworkstation-avahi.service "$RPM_PAYLOAD/etc/avahi/services/touchworkstation.service"
@@ -86,8 +86,8 @@ jobs:
             cp "$f" "$RPM_PAYLOAD/usr/bin/"
           done
           chmod +x "$RPM_PAYLOAD"/usr/bin/*
-          cp packaging/bin/xdg-open "$RPM_PAYLOAD/usr/local/bin/xdg-open"
-          chmod +x "$RPM_PAYLOAD/usr/local/bin/xdg-open"
+          cp packaging/bin/xdg-open "$RPM_PAYLOAD/opt/touchworkstation/bin/xdg-open"
+          chmod +x "$RPM_PAYLOAD/opt/touchworkstation/bin/xdg-open"
           (cd "$RUNNER_TEMP/rpm-payload" && tar -czf "$RPMBUILD_DIR/SOURCES/touchworkstation-$RPM_VERSION.tar.gz" "touchworkstation-$RPM_VERSION")
           sed "s/^Version:.*/Version:        $RPM_VERSION/" packaging/rpm/touchworkstation.spec > "$RPMBUILD_DIR/SPECS/touchworkstation.spec"
           rpmbuild --define "_topdir $RPMBUILD_DIR" -bb "$RPMBUILD_DIR/SPECS/touchworkstation.spec"
