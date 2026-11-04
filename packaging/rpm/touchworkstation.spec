@@ -48,13 +48,12 @@ Group=TW_GROUP_PLACEHOLDER
 WantedBy=multi-user.target
 UNIT
 
-# /usr/local/bin, not /usr/bin: shadows the real xdg-open (from xdg-utils)
-# system-wide via normal PATH precedence, without owning the same file path
-# that package does — installing at /usr/bin/xdg-open would conflict with
-# it outright. See packaging/bin/xdg-open for why this exists.
-mkdir -p %{buildroot}/usr/local/bin
-cp -a usr/local/bin/xdg-open %{buildroot}/usr/local/bin/xdg-open
-chmod 755 %{buildroot}/usr/local/bin/xdg-open
+# PRIVATE dir, NOT /usr/local/bin: the app puts this dir first on PATH only
+# for the processes it spawns, so it never shadows the system xdg-open for the
+# real desktop. See packaging/bin/xdg-open for why this exists.
+mkdir -p %{buildroot}/opt/touchworkstation/bin
+cp -a opt/touchworkstation/bin/xdg-open %{buildroot}/opt/touchworkstation/bin/xdg-open
+chmod 755 %{buildroot}/opt/touchworkstation/bin/xdg-open
 
 # Management CLIs (touchworkstation + the hyphenated helpers). The payload's
 # usr/bin holds exactly these — xdg-open was routed to /usr/local/bin instead —
@@ -71,8 +70,8 @@ cp -a etc/avahi/services/touchworkstation.service %{buildroot}/etc/avahi/service
 %files
 /opt/touchworkstation/app
 /opt/touchworkstation/runtime
+/opt/touchworkstation/bin/xdg-open
 /usr/lib/systemd/system/touchworkstation.service
-/usr/local/bin/xdg-open
 /usr/bin/touchworkstation*
 /etc/avahi/services/touchworkstation.service
 
@@ -128,10 +127,17 @@ TW_USER=$APP_USER
 TW_HOME=$APP_HOME
 TW_STATE_DIR=$APP_HOME/.local/share/touchworkstation
 TW_ENV_FILE=$ENV_FILE
-BROWSER=/usr/local/bin/xdg-open
+TW_BIN=/opt/touchworkstation/bin
 HOME=$APP_HOME
 ENV
 chown root:"$APP_GROUP" "$ENV_FILE"; chmod 660 "$ENV_FILE"
+
+# Remove our old system-wide xdg-open shim from a previous version (it lived in
+# /usr/local/bin and shadowed the real xdg-open). It's now private and scoped
+# to the app's own spawned sessions.
+if [ -f /usr/local/bin/xdg-open ] && grep -q TOUCHWORKSTATION_OPEN_URL /usr/local/bin/xdg-open 2>/dev/null; then
+  rm -f /usr/local/bin/xdg-open
+fi
 mkdir -p "$APP_HOME/.local/share/touchworkstation"
 chown -R "$APP_USER:$APP_GROUP" "$APP_HOME/.local" "$STATE" "$APP_HOME/TouchWorkstation" "$APP"
 

@@ -83,8 +83,16 @@ process.on('unhandledRejection',(reason)=>{
 function twPath(){
   const extra=[`${HOME}/.local/bin`,`${HOME}/.npm-global/bin`,`${HOME}/bin`,`${HOME}/.cargo/bin`,`${HOME}/.deno/bin`,`${HOME}/.bun/bin`,'/usr/local/bin','/usr/bin','/bin','/snap/bin'];
   try{const nvm=`${HOME}/.nvm/versions/node`;if(fs.existsSync(nvm))for(const v of fs.readdirSync(nvm))extra.push(`${nvm}/${v}/bin`)}catch{}
-  return [...new Set([...(process.env.PATH||'').split(':'),...extra])].filter(Boolean).join(':');
+  const dirs=[...new Set([...(process.env.PATH||'').split(':'),...extra])].filter(Boolean);
+  // TW_BIN holds our private xdg-open shim (set by packaging). Put it FIRST so
+  // that only processes WE spawn resolve `xdg-open` to the shim — the system
+  // xdg-open (xdg-utils in /usr/bin) is left untouched for the real desktop.
+  if(process.env.TW_BIN)dirs.unshift(process.env.TW_BIN);
+  return [...new Set(dirs)].filter(Boolean).join(':');
 }
+// Point $BROWSER at the shim for spawned processes only (tools that check
+// $BROWSER before xdg-open). Empty object in dev (no TW_BIN) so nothing leaks.
+const BROWSER_ENV=process.env.TW_BIN?{BROWSER:`${process.env.TW_BIN}/xdg-open`}:{};
 const {
   NODE_ENV:_ignoredNodeEnv,
   // Whatever process happens to be running this server (a systemd unit gets
@@ -106,7 +114,7 @@ const {
 // error) — and vite/next/etc. live there, so the dev server binary never
 // gets installed even though the install step reports success. This was the
 // actual root cause of "vite: not found" after an install that looked fine.
-const SPAWN_ENV={...ENV_NO_NODE_ENV,PATH:twPath()};
+const SPAWN_ENV={...ENV_NO_NODE_ENV,PATH:twPath(),...BROWSER_ENV};
 
 // Hermes ships a local web gateway. This endpoint finds the running gateway
 // (or starts it) and returns a same-origin proxied URL so the UI opens in a

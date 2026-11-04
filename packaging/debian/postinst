@@ -50,10 +50,18 @@ TW_USER=$APP_USER
 TW_HOME=$APP_HOME
 TW_STATE_DIR=$APP_HOME/.local/share/touchworkstation
 TW_ENV_FILE=$ENV_FILE
-BROWSER=/usr/local/bin/xdg-open
+TW_BIN=/opt/touchworkstation/bin
 HOME=$APP_HOME
 ENV
 chown root:"$APP_GROUP" "$ENV_FILE"; chmod 660 "$ENV_FILE"
+
+# Remove our old system-wide xdg-open shim from a previous version — it used to
+# live in /usr/local/bin and shadow the real xdg-open for the whole machine.
+# The shim is now private (/opt/touchworkstation/bin) and scoped by the app to
+# its own spawned sessions, so the system xdg-open is left untouched.
+if [ -f /usr/local/bin/xdg-open ] && grep -q TOUCHWORKSTATION_OPEN_URL /usr/local/bin/xdg-open 2>/dev/null; then
+  rm -f /usr/local/bin/xdg-open
+fi
 
 STATE_DIR="$APP_HOME/.local/share/touchworkstation"
 mkdir -p "$STATE_DIR"

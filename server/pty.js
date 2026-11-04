@@ -28,7 +28,12 @@ function augmentPath(current, home) {
     const nvm = `${home}/.nvm/versions/node`;
     if (fs.existsSync(nvm)) for (const v of fs.readdirSync(nvm)) extra.push(`${nvm}/${v}/bin`);
   } catch { /* ignore */ }
-  return [...new Set([...(current || '').split(':'), ...extra])].filter(Boolean).join(':');
+  const dirs = [...new Set([...(current || '').split(':'), ...extra])].filter(Boolean);
+  // TW_BIN (our private xdg-open shim) goes first, so only TouchWorkstation's
+  // own terminal sessions redirect browser-opens to the phone — the system
+  // xdg-open stays the default everywhere else.
+  if (process.env.TW_BIN) dirs.unshift(process.env.TW_BIN);
+  return [...new Set(dirs)].filter(Boolean).join(':');
 }
 
 function parseCookies(req) {
@@ -115,7 +120,9 @@ export function attachPty(server, { jwtSecret, home }) {
       // etc.) are runnable even though the systemd service starts with a
       // minimal PATH. Without this, `hermes`/`codex` are "command not found"
       // in the terminal even when installed.
-      env: { ...process.env, PATH: augmentPath(process.env.PATH, home) },
+      // $BROWSER points at the shim only inside our sessions (TW_BIN set by
+      // packaging), so "opening browser…" in a CLI here redirects to the phone.
+      env: { ...process.env, PATH: augmentPath(process.env.PATH, home), ...(process.env.TW_BIN ? { BROWSER: `${process.env.TW_BIN}/xdg-open` } : {}) },
     });
 
     term.onData((data) => {
