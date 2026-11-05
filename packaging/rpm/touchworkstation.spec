@@ -111,12 +111,22 @@ APP_GROUP=$(id -gn "$APP_USER")
 APP_HOME=$(getent passwd "$APP_USER" | cut -d: -f6)
 
 mkdir -p "$ENV_DIR" "$STATE" "$APP_HOME/TouchWorkstation/Projects"
-OLD_PASSWORD=""; OLD_SECRET=""
+OLD_PASSWORD=""; OLD_SECRET=""; OLD_MUST_CHANGE=""
 [ -f "$ENV_FILE" ] && OLD_PASSWORD=$(grep '^APP_PASSWORD=' "$ENV_FILE" | cut -d= -f2- || true)
 [ -f "$ENV_FILE" ] && OLD_SECRET=$(grep '^JWT_SECRET=' "$ENV_FILE" | cut -d= -f2- || true)
-APP_PASSWORD="${OLD_PASSWORD:-touchwork}"
+[ -f "$ENV_FILE" ] && OLD_MUST_CHANGE=$(grep '^PW_MUST_CHANGE=' "$ENV_FILE" | cut -d= -f2- || true)
+# Preserve a password the user has actually chosen (first-login completed →
+# PW_MUST_CHANGE=0). While PW_MUST_CHANGE is still 1 the stored value is only a
+# temporary first-run password, and a leftover from a failed or older install
+# can differ from the documented `touchwork` (older builds used a random one),
+# leaving the user unable to log in. Reset it so the one-line install is
+# deterministic no matter what a previous attempt left behind.
+if [ "$OLD_MUST_CHANGE" = "0" ] && [ -n "$OLD_PASSWORD" ]; then
+  APP_PASSWORD="$OLD_PASSWORD"; PW_MUST_CHANGE=0
+else
+  APP_PASSWORD=touchwork; PW_MUST_CHANGE=1
+fi
 JWT_SECRET="${OLD_SECRET:-$(openssl rand -hex 48)}"
-PW_MUST_CHANGE=1; [ -n "$OLD_PASSWORD" ] && PW_MUST_CHANGE=0
 
 cat > "$ENV_FILE" <<ENV
 APP_PASSWORD=$APP_PASSWORD
