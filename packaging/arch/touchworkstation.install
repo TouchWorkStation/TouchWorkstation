@@ -70,12 +70,31 @@ post_install() {
 
   mkdir -p "$ENV_DIR" "$STATE" "$APP_HOME/TouchWorkstation/Projects" "$APP_HOME/.local/share/touchworkstation"
 
-  if [ ! -f "$ENV_FILE" ]; then
-    JWT_SECRET=$(openssl rand -hex 48)
-    cat > "$ENV_FILE" <<ENV
-APP_PASSWORD=touchwork
+  # Reconcile the env file instead of only writing it when absent. A leftover
+  # file from a failed or older install (even a partially-run website install)
+  # otherwise survives untouched, and if its temporary password isn't the
+  # documented `touchwork` — older builds generated a random one — the user
+  # can't log in with the password this installer prints. A password the user
+  # has actually chosen (first-login completed → PW_MUST_CHANGE=0) is always
+  # preserved; while PW_MUST_CHANGE is still 1 the stored value is only a
+  # temporary first-run password, so reset it to `touchwork` to keep the
+  # one-line install deterministic. JWT_SECRET is preserved once it exists.
+  OLD_PASSWORD=""; OLD_SECRET=""; OLD_MUST_CHANGE=""
+  if [ -f "$ENV_FILE" ]; then
+    OLD_PASSWORD=$(grep '^APP_PASSWORD=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)
+    OLD_SECRET=$(grep '^JWT_SECRET=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)
+    OLD_MUST_CHANGE=$(grep '^PW_MUST_CHANGE=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)
+  fi
+  if [ "$OLD_MUST_CHANGE" = "0" ] && [ -n "$OLD_PASSWORD" ]; then
+    APP_PASSWORD="$OLD_PASSWORD"; PW_MUST_CHANGE=0
+  else
+    APP_PASSWORD=touchwork; PW_MUST_CHANGE=1
+  fi
+  JWT_SECRET="${OLD_SECRET:-$(openssl rand -hex 48)}"
+  cat > "$ENV_FILE" <<ENV
+APP_PASSWORD=$APP_PASSWORD
 JWT_SECRET=$JWT_SECRET
-PW_MUST_CHANGE=1
+PW_MUST_CHANGE=$PW_MUST_CHANGE
 PORT=8787
 TW_USER=$APP_USER
 TW_HOME=$APP_HOME
@@ -84,8 +103,7 @@ TW_ENV_FILE=$ENV_FILE
 TW_BIN=/opt/touchworkstation/bin
 HOME=$APP_HOME
 ENV
-    chown root:"$APP_GROUP" "$ENV_FILE"; chmod 660 "$ENV_FILE"
-  fi
+  chown root:"$APP_GROUP" "$ENV_FILE"; chmod 660 "$ENV_FILE"
 
   chown -R "$APP_USER:$APP_GROUP" "$APP_HOME/.local" "$STATE" "$APP_HOME/TouchWorkstation" "$APP" 2>/dev/null || true
 
@@ -112,8 +130,10 @@ ENV
   echo " Open: http://$(hostname).local:8088"
   IP=$(hostname -I 2>/dev/null | awk '{print $1}')
   [ -n "$IP" ] && echo " Or:   http://${IP}:8088"
-  if [ "$APP_USER" != root ]; then
-    echo " Beta password: touchwork (you'll be asked to change it on first login)"
+  if [ "$PW_MUST_CHANGE" = "1" ]; then
+    echo " Beta password: $APP_PASSWORD (you'll be asked to change it on first login)"
+  else
+    echo " Log in with the password you already set."
   fi
   echo " Manage it with:  touchworkstation status | restart | url"
   echo "============================================================"
@@ -123,6 +143,14 @@ post_upgrade() {
   # Re-apply the user/group substitution — pacman replaces the unit file
   # with the fresh placeholder version on every upgrade.
   ENV_FILE=/etc/touchworkstation/touchworkstation.env
+  # If first-login was never completed (PW_MUST_CHANGE=1), the stored password
+  # is just a temporary first-run value and may not be the documented
+  # `touchwork` (an older/failed install could have left a random one). Reset
+  # it so re-running the installer recovers a known first-run password. A
+  # password the user has set (PW_MUST_CHANGE=0) is left untouched.
+  if grep -q '^PW_MUST_CHANGE=1' "$ENV_FILE" 2>/dev/null; then
+    sed -i 's/^APP_PASSWORD=.*/APP_PASSWORD=touchwork/' "$ENV_FILE"
+  fi
   APP_USER=$(grep '^TW_USER=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)
   [ -n "$APP_USER" ] || return 0
   APP_GROUP=$(id -gn "$APP_USER" 2>/dev/null || echo "$APP_USER")
