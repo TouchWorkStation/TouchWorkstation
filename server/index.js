@@ -26,6 +26,9 @@ app.set('trust proxy','loopback');
 // runs first on every request and a stricter one downstream never gets the
 // chance to override an already-rejected oversized body.
 app.use(express.json({limit:'12mb'}));
+// App mode: only what the App Store build offers. Everything else under /api is simply not there.
+const APP_MODE_API=/^\/api\/(me|settings|status|setup|crash-log|projects|github|agents|tasks|terminal|files|file-content|processes)(\/|$)/;
+app.use((req,res,next)=>{if(process.env.TW_MODE!=='app')return next();if(!fromGateway(req))return res.status(401).type('text/plain').send('Open this app from Omarchy Server.');if(req.path.startsWith('/api/')&&!APP_MODE_API.test(req.path))return res.status(404).json({error:'Not available in this version'});next()});
 const PORT=Number(process.env.PORT||8787);
 const HOME=process.env.TW_HOME||os.homedir();
 
@@ -133,13 +136,22 @@ const JWT_SECRET=process.env.JWT_SECRET||'dev-only-change-me';
 const STATE_DIR=process.env.TW_STATE_DIR||path.join(HOME,'.local/share/touchworkstation');
 const RUN_DIR=path.join(STATE_DIR,'run');
 const CONFIG_FILE=path.join(STATE_DIR,'config.json');
-const PROJECTS_DEFAULT=path.join(HOME,'TouchWorkstation','Projects');
+const PROJECTS_DEFAULT=process.env.TW_PROJECTS||path.join(HOME,'TouchWorkstation','Projects');
+// App mode (TW_MODE=app): the Omarchy Server App Store build. It runs in its own container behind
+// Omarchy Server's sign-in, with only Projects, GitHub and Agents (and the container's own terminal
+// they use). Omarchy Server's gateway proves each request came through its sign-in with a per-app
+// key (x-omarchy-gateway); anything without it is refused, so nothing else that can reach the
+// container's port gets in.
+const APP_MODE=process.env.TW_MODE==='app';
+const GATEWAY_KEY=String(process.env.OMARCHY_GATEWAY_KEY||'');
+if(APP_MODE&&GATEWAY_KEY.length<32){console.error('TW_MODE=app needs OMARCHY_GATEWAY_KEY (set by Omarchy Server). Refusing to start without it.');process.exit(1)}
+function fromGateway(req){const got=String(req.headers['x-omarchy-gateway']||'');const a=crypto.createHash('sha256').update(got).digest(),b=crypto.createHash('sha256').update(GATEWAY_KEY).digest();return got.length>0&&crypto.timingSafeEqual(a,b)}
 fs.mkdirSync(RUN_DIR,{recursive:true});
 fs.mkdirSync(PROJECTS_DEFAULT,{recursive:true});
 let runners=new Map();
 
 function parseCookies(req){return Object.fromEntries((req.headers.cookie||'').split(';').map(x=>x.trim()).filter(Boolean).map(x=>{const i=x.indexOf('=');return [x.slice(0,i),decodeURIComponent(x.slice(i+1))]}));}
-function auth(req,res,next){try{const t=parseCookies(req).tw_session||req.headers.authorization?.replace('Bearer ','');if(!t)throw 0;req.user=jwt.verify(t,JWT_SECRET);next()}catch{res.status(401).json({error:'Not authenticated'})}}
+function auth(req,res,next){if(APP_MODE){if(fromGateway(req)){req.user={appMode:true};return next()}return res.status(401).json({error:'Open this app from Omarchy Server'})}try{const t=parseCookies(req).tw_session||req.headers.authorization?.replace('Bearer ','');if(!t)throw 0;req.user=jwt.verify(t,JWT_SECRET);next()}catch{res.status(401).json({error:'Not authenticated'})}}
 // Constant-time password comparison — avoids leaking the password length/prefix
 // through response timing. Hash both sides to a fixed length first so
 // timingSafeEqual never throws on a length mismatch (which would itself leak).
@@ -177,7 +189,7 @@ app.post('/api/login',(req,res)=>{
   res.setHeader('Set-Cookie',sessionCookie(token,req));
   res.json({ok:true,mustChangePassword:PW_MUST_CHANGE});
 });
-app.get('/api/me',auth,(req,res)=>res.json({hostname:os.hostname(),user:os.userInfo().username,version:'1.0.0-beta.58',build:BUILD_SHA,startedAt:PROCESS_STARTED_AT,mustChangePassword:PW_MUST_CHANGE}));
+app.get('/api/me',auth,(req,res)=>res.json({hostname:os.hostname(),user:os.userInfo().username,version:'1.0.0-beta.58',build:BUILD_SHA,startedAt:PROCESS_STARTED_AT,mustChangePassword:APP_MODE?false:PW_MUST_CHANGE,appMode:APP_MODE}));
 
 // Rewrite APP_PASSWORD= (and clear PW_MUST_CHANGE) in the env file in place,
 // preserving every other line, so systemd/postinst keep reading the same
@@ -1400,7 +1412,7 @@ app.use(express.static(dist,{
 }));
 app.use((req,res)=>res.set('Cache-Control','no-store').sendFile(path.join(dist,'index.html')));
 const server=http.createServer(app);
-attachPty(server,{jwtSecret:JWT_SECRET,home:HOME});
+attachPty(server,{jwtSecret:JWT_SECRET,home:HOME,authorize:APP_MODE?fromGateway:null});
 server.listen(PORT,'0.0.0.0',()=>console.log(`TouchWorkstation listening on :${PORT}`));
 
 // Optional HTTPS listener. This is what actually flips isSecureContext to
@@ -1420,7 +1432,7 @@ server.listen(PORT,'0.0.0.0',()=>console.log(`TouchWorkstation listening on :${P
 const HTTPS_PORT=Number(process.env.HTTPS_PORT||8443);
 const TLS_DIR=process.env.TW_TLS_DIR||path.join(HOME,'.touchworkstation','tls');
 const tlsCertPath=path.join(TLS_DIR,'cert.pem'),tlsKeyPath=path.join(TLS_DIR,'key.pem');
-if(fs.existsSync(tlsCertPath)&&fs.existsSync(tlsKeyPath)){
+if(!APP_MODE&&fs.existsSync(tlsCertPath)&&fs.existsSync(tlsKeyPath)){
   try{
     const httpsServer=https.createServer({cert:fs.readFileSync(tlsCertPath),key:fs.readFileSync(tlsKeyPath)},app);
     attachPty(httpsServer,{jwtSecret:JWT_SECRET,home:HOME});
