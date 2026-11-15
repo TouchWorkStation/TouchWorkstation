@@ -37,6 +37,10 @@ import './styles.css';
 // settings, with this constant as the fallback before settings load / for
 // distros that never touch it.
 const BUILD_OMARCHY=import.meta.env.VITE_THEME==='minimal';
+// The Omarchy Server App Store build: just Projects (with GitHub and live previews), Agents, and the
+// container's own terminal they use. Omarchy Server signs you in, so there's no login of our own.
+const APP_MODE=import.meta.env.VITE_APP_MODE==='1';
+const APP_NAV=[['projects',Code2,'Projects'],['agents',Bot,'Agents'],['terminal',TerminalSquare,'Terminal'],['settings',Settings,'Settings']];
 // Omarchy defaults to the tiled layout — it IS the Omarchy look, so landing
 // on the classic list first made the tiled dashboard something you had to go
 // find in Settings. Only an explicit saved choice moves off it, so a user who
@@ -105,7 +109,7 @@ function App(){
  // Appearance) wins when present, otherwise fall back to whatever the build
  // itself was compiled with. Applied to <html> reactively rather than once
  // at module load, since it can now change at runtime without a rebuild.
- const omarchy=settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY;
+ const omarchy=APP_MODE?false:settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY;
  useEffect(()=>{document.documentElement.classList.toggle('omarchy-build',omarchy)},[omarchy]);
  // Tiled isn't only a home-screen layout — picking it restyles the whole app
  // to match (black ground, mono type, green accents), so moving off the home
@@ -137,11 +141,12 @@ function App(){
   set('--tw-wall-dim',settings?.tiledWallDim!=null?String(settings.tiledWallDim):null);
  },[tiledSkin,settings?.tiledAccent,settings?.tiledGlassBlur,settings?.tiledGlassAlpha,settings?.tiledWallDim]);
  if(loading)return <Splash/>;
+ if(!me&&APP_MODE)return <div className="splash"><Mark/><h1>TouchWorkstation</h1><p>Open this app from Omarchy Server.</p></div>;
  if(!me)return <Login onDone={async(pw)=>{setLoginPw(pw);setMe(await api('/me'));setSettings(await api('/settings'))}}/>;
  // A fresh install ships a temporary generated password. Nothing else in the
  // app is reachable until the user sets their own.
- if(me.mustChangePassword)return <ChangePassword currentPassword={loginPw} onDone={()=>{setMe(m=>({...m,mustChangePassword:false}))}}/>;
- if(settings?.onboarded===false)return <SetupWizard me={me} onDone={async()=>{await api('/setup/complete',{method:'POST',body:'{}'});setSettings(await api('/settings'))}}/>;
+ if(!APP_MODE&&me.mustChangePassword)return <ChangePassword currentPassword={loginPw} onDone={()=>{setMe(m=>({...m,mustChangePassword:false}))}}/>;
+ if(!APP_MODE&&settings?.onboarded===false)return <SetupWizard me={me} onDone={async()=>{await api('/setup/complete',{method:'POST',body:'{}'});setSettings(await api('/settings'))}}/>;
  return <Shell me={me} settings={settings} setSettings={setSettings} omarchy={omarchy}/>;
 }
 
@@ -219,13 +224,15 @@ const NAV=[
 
 function Shell({me,settings,setSettings,omarchy}){
  const mobile=useMedia('(max-width: 820px)');
- const[view,setView]=useState('home'),[project,setProject]=useState(null),[mobileMenu,setMobileMenu]=useState(false);
+ const[view,setView]=useState(APP_MODE?'projects':'home'),[project,setProject]=useState(null),[mobileMenu,setMobileMenu]=useState(false);
+ const nav=APP_MODE?APP_NAV:NAV;
  const[navState,setNavState]=useState(null);
  // A short "transition" flag drives a CSS fade on view change, so navigation
  // feels intentional instead of a hard swap. Purely visual; no data impact.
  const[transitioning,setTransitioning]=useState(false);
  const[showMachines,setShowMachines]=useState(false);
  const go=(v,state=null)=>{
+   if(APP_MODE&&v==='home')v='projects';
    // Home-when-already-home brings up the popup nav tree instead of being a
    // no-op. On the bare Omarchy home there's otherwise no way to reach it, and
    // it makes Home a consistent "open the menu" gesture across every variant.
@@ -247,9 +254,9 @@ function Shell({me,settings,setSettings,omarchy}){
  // under a topbar the way every other distro's build still does.
  const bare=omarchy&&(view==='home'||view==='terminal')&&!project;
  return <div className={'shell '+(mobile?'is-mobile':'is-desktop')}>
- {!mobile&&!bare&&<aside className="sidebar"><Brand/><nav>{NAV.map(([id,Icon,label])=><button key={id} className={view===id&&!project?'active':''} onClick={()=>go(id)}><Icon/><span>{label}</span></button>)}</nav><div className="sidebar-bottom"><button className="machine-chip" onClick={()=>setShowMachines(true)} title="Switch machine"><Dot/><div><strong>{me.hostname}</strong><small>Switch machine</small></div><ChevronDown/></button><span className="version">{me.version}</span></div></aside>}
+ {!mobile&&!bare&&<aside className="sidebar"><Brand/><nav>{nav.map(([id,Icon,label])=><button key={id} className={view===id&&!project?'active':''} onClick={()=>go(id)}><Icon/><span>{label}</span></button>)}</nav><div className="sidebar-bottom">{APP_MODE?null:<button className="machine-chip" onClick={()=>setShowMachines(true)} title="Switch machine"><Dot/><div><strong>{me.hostname}</strong><small>Switch machine</small></div><ChevronDown/></button>}<span className="version">{me.version}</span></div></aside>}
  <main className={'main'+(bare?' main-bare':'')}>{!bare&&<Topbar me={me} mobile={mobile} view={view} project={project} onMenu={()=>setMobileMenu(!mobileMenu)} go={go} onMachines={()=>setShowMachines(true)}/>}<div className={'view'+(transitioning?' view-transition':'')+(bare?' view-bare':'')}><Router view={view} go={go} openProject={openProject} openWebview={openWebview} openAgent={openAgent} navState={navState} me={me} project={project} setProject={setProject} settings={settings} setSettings={setSettings} omarchy={omarchy} onMachines={()=>setShowMachines(true)}/></div></main>
- {mobile&&!bare&&!omarchy&&<MobileDock view={view} project={project} go={go}/>} {mobile&&mobileMenu&&<MobileSheet items={omarchy?minimalNavItems:NAV} go={go} onClose={()=>setMobileMenu(false)} onMachines={()=>{setMobileMenu(false);setShowMachines(true)}}/>}
+ {mobile&&!bare&&!omarchy&&<MobileDock view={view} project={project} go={go}/>} {mobile&&mobileMenu&&<MobileSheet items={APP_MODE?APP_NAV:omarchy?minimalNavItems:NAV} go={go} onClose={()=>setMobileMenu(false)} onMachines={APP_MODE?null:()=>{setMobileMenu(false);setShowMachines(true)}}/>}
  {showMachines&&<MachineSwitcher me={me} onClose={()=>setShowMachines(false)}/>}</div>
 }
 // Omarchy's own destinations ({id,icon,label} objects) normalized to the
@@ -261,9 +268,9 @@ function Shell({me,settings,setSettings,omarchy}){
 // opened from anywhere — it's the way back, so every variant's nav has one.
 const minimalNavItems=[['home',House,'Home'],...MINIMAL_NAV.map(n=>[n.id,n.icon,n.label])];
 function Topbar({me,mobile,view,project,onMenu,go,onMachines}){
- const label=project?project.name:(NAV.find(n=>n[0]===view)?.[2]||'Home');
- return <header className="topbar">{mobile?<button className="icon-btn" onClick={onMenu}><Menu/></button>:<div className="crumb">TouchWorkstation <ChevronRight/> <span>{label}</span></div>}<div className="top-status"><button className="top-machine" onClick={onMachines} title="Switch machine"><Dot/> <span>{me.hostname}</span><ChevronDown/></button>{!mobile&&<Pill>{me.version}</Pill>}<button className="icon-btn" onClick={()=>go('settings')}><Settings/></button></div></header>}
-function MobileDock({view,project,go}){const items=[['home',Home,'Home'],['apps',Grid3X3,'Apps'],['projects',Code2,'Projects'],['agents',Bot,'Agents'],['terminal',TerminalSquare,'Terminal']];return <nav className="mobile-dock">{items.map(([id,Icon,label])=><button className={view===id&&!project?'active':''} key={id} onClick={()=>go(id)}><Icon/><span>{label}</span></button>)}</nav>}
+ const label=project?project.name:((APP_MODE?APP_NAV:NAV).find(n=>n[0]===view)?.[2]||'Home');
+ return <header className="topbar">{mobile?<button className="icon-btn" onClick={onMenu}><Menu/></button>:<div className="crumb">TouchWorkstation <ChevronRight/> <span>{label}</span></div>}<div className="top-status">{!APP_MODE&&<button className="top-machine" onClick={onMachines} title="Switch machine"><Dot/> <span>{me.hostname}</span><ChevronDown/></button>}{!mobile&&<Pill>{me.version}</Pill>}<button className="icon-btn" onClick={()=>go('settings')}><Settings/></button></div></header>}
+function MobileDock({view,project,go}){const items=APP_MODE?APP_NAV:[['home',Home,'Home'],['apps',Grid3X3,'Apps'],['projects',Code2,'Projects'],['agents',Bot,'Agents'],['terminal',TerminalSquare,'Terminal']];return <nav className="mobile-dock">{items.map(([id,Icon,label])=><button className={view===id&&!project?'active':''} key={id} onClick={()=>go(id)}><Icon/><span>{label}</span></button>)}</nav>}
 // Bottom-bar-free on Omarchy (see Shell above) — this sheet, opened from
 // the top-left hamburger, is the only mobile nav surface there, so it's
 // handed the Omarchy-specific destination list instead of the standard
@@ -362,6 +369,7 @@ function MachineCard({m}){
 }
 
 function Router(p){
+ if(APP_MODE&&!p.project&&!['projects','project-detail','agents','agent-detail','preview-full','terminal','settings'].includes(p.view))return <Projects go={p.go}/>;
  if(p.project)return <DeveloperWorkspace project={p.project} go={p.go} back={()=>p.go('projects')}/>;
  switch(p.view){
    case'projects':return <Projects go={p.go}/>;
@@ -378,7 +386,7 @@ function Router(p){
    case'files':return <Files/>;
    case'terminal':return <TerminalScreen go={p.go} omarchy={p.omarchy} initialSessionId={p.navState?.sessionId} cwd={p.navState?.cwd} pendingCommand={p.navState?.pendingCommand}/>;
    case'settings':return <SettingsView settings={p.settings} setSettings={p.setSettings} go={p.go} onMachines={p.onMachines}/>;
-   default:return p.omarchy ? (omarchyLayoutOf(p.settings)==='tiled' ? <TiledDashboard go={p.go} settings={p.settings}/> : <MinimalDashboard go={p.go}/>) : <Dashboard me={p.me} go={p.go} openProject={p.openProject} settings={p.settings}/>;
+   default:if(APP_MODE)return <Projects go={p.go}/>;return p.omarchy ? (omarchyLayoutOf(p.settings)==='tiled' ? <TiledDashboard go={p.go} settings={p.settings}/> : <MinimalDashboard go={p.go}/>) : <Dashboard me={p.me} go={p.go} openProject={p.openProject} settings={p.settings}/>;
  }
 }
 
@@ -1135,11 +1143,21 @@ function BiometricSettings(){
   {msg&&<div className={ok?'settings-message':'inline-error'}>{msg}</div>}
  </div>;
 }
-function SettingsView({settings,setSettings,go,onMachines}){const[vpn,setVpn]=useState(null),[github,setGithub]=useState(null),[msg,setMsg]=useState(''),[showRA,setShowRA]=useState(false),[showWP,setShowWP]=useState(false),[wpVersion,setWpVersion]=useState(0);const[me]=useLoad(()=>api('/me'),[]);const[status]=usePoll(()=>api('/status'),5000,[]);useEffect(()=>{api('/vpn/status').then(setVpn);api('/github/status').then(setGithub)},[]);
+function SettingsView({settings,setSettings,go,onMachines}){const[vpn,setVpn]=useState(null),[github,setGithub]=useState(null),[msg,setMsg]=useState(''),[showRA,setShowRA]=useState(false),[showWP,setShowWP]=useState(false),[wpVersion,setWpVersion]=useState(0);const[me]=useLoad(()=>api('/me'),[]);const[status]=usePoll(()=>api('/status'),5000,[]);useEffect(()=>{if(!APP_MODE)api('/vpn/status').then(setVpn).catch(()=>{});api('/github/status').then(setGithub)},[]);
  const localUrl=me?.hostname?`http://${me.hostname}.local:8088`:null;
  const ipUrl=status?.ip?`http://${status.ip}:8088`:null;
  const isOmarchy=settings?.uiVariant?settings.uiVariant==='omarchy':BUILD_OMARCHY;
  const isTiled=isOmarchy&&omarchyLayoutOf(settings)==='tiled';
+ if(APP_MODE)return <div className="settings page-pad"><PageTitle kicker="SETTINGS" title="Keep it simple." body="Sign in to GitHub and your AI tools once. Everything else is handled by Omarchy Server."/>
+ <SettingsGroup id="github" title="GitHub" icon={GitBranch}>
+ <Setting icon={GitBranch} title="GitHub" status={github?.connected?'Connected':'Not connected'} text={github?.connected?`Connected as ${github.user||'your GitHub account'}.`:'Do you want to clone, pull and push your projects from your phone?'}><Button onClick={async()=>{if(github?.connected){go('projects');return}try{const sessionId=await resolveTerminalTarget('github-login');go('terminal',{pendingCommand:'gh auth login',sessionId})}catch{go('terminal',{pendingCommand:'gh auth login'})}}}>{github?.connected?'Manage':'Connect GitHub'}</Button></Setting>
+ </SettingsGroup>
+ <SettingsGroup id="ai" title="AI" icon={Bot}>
+ <Setting icon={Bot} title="AI sign-in" status="One place" text="Sign in to each AI CLI once, here. Every agent reuses it."><AiSignIn go={go}/></Setting>
+ <Setting icon={Bot} title="AI Agents" status="Configurable" text="Choose a runtime, scope an agent to a project, and set its permissions in the Agents screen."><Button onClick={()=>go('agents')}>Go to Agents</Button></Setting>
+ </SettingsGroup>
+ <SettingsGroup id="system" title="About" icon={SlidersHorizontal}><BuildInfo me={me}/></SettingsGroup>
+ </div>;
  return <div className="settings page-pad">{showRA&&<RemoteAccess onClose={()=>{setShowRA(false);api('/vpn/status').then(setVpn)}}/>}{showWP&&<WallpaperPicker onClose={()=>setShowWP(false)} onSaved={()=>setWpVersion(v=>v+1)}/>}<PageTitle kicker="SETTINGS" title="Keep it simple." body="Tell TouchWorkstation what you want to do. Advanced Linux details stay out of the way."/>
  <SettingsGroup id="connectivity" title="Connectivity" icon={Globe2}>
  <div className="access-card">

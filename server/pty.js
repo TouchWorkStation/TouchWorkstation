@@ -74,7 +74,7 @@ function safeSessionId(raw) {
  * @param {import('http').Server} server
  * @param {{ jwtSecret: string, home: string }} opts
  */
-export function attachPty(server, { jwtSecret, home }) {
+export function attachPty(server, { jwtSecret, home, authorize = null }) {
   const wss = new WebSocketServer({ noServer: true });
 
   server.on('upgrade', (req, socket, head) => {
@@ -82,9 +82,13 @@ export function attachPty(server, { jwtSecret, home }) {
     if (pathname !== '/ws/terminal') return; // not ours; ignore
 
     try {
-      const token = parseCookies(req).tw_session;
-      if (!token) throw new Error('no session cookie');
-      jwt.verify(token, jwtSecret);
+      // App mode: Omarchy Server's sign-in vouches for the request instead of our own session.
+      if (authorize) { if (!authorize(req)) throw new Error('not from the gateway'); }
+      else {
+        const token = parseCookies(req).tw_session;
+        if (!token) throw new Error('no session cookie');
+        jwt.verify(token, jwtSecret);
+      }
     } catch {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
       socket.destroy();
